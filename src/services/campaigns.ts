@@ -77,6 +77,7 @@ export interface CreateCampaignInput {
   name: string;
   contactListId?: string;
   templateId?: string;
+  templateSid?: string;
   messageBody: string;
   mediaUrl?: string;
   mediaType?: string;
@@ -93,6 +94,12 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Campai
   const now = Date.now();
   const listId = input.contactListId || null;
   let totalContacts = 0;
+
+  let templateSid = input.templateSid || null;
+  if (!templateSid && input.templateId) {
+    const template = await db.collection('templates').findOne({ _id: new ObjectId(input.templateId) });
+    templateSid = template?.sid || null;
+  }
 
   if (listId) {
     const memberships = await db.collection('contact_list_members').find({ list_id: listId }).toArray();
@@ -112,6 +119,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Campai
     name: input.name.trim(),
     contact_list_id: listId,
     template_id: input.templateId || null,
+    template_sid: templateSid,
     message_body: input.messageBody,
     media_url: input.mediaUrl || null,
     media_type: input.mediaType || null,
@@ -228,6 +236,7 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
     ['name', v => v?.trim()],
     ['contactListId', v => v || null],
     ['templateId', v => v || null],
+    ['templateSid', v => v || null],
     ['messageBody', v => v],
     ['mediaUrl', v => v || null],
     ['mediaType', v => v || null],
@@ -243,6 +252,12 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
       const col = key.replace(/[A-Z]/g, m => '_' + m.toLowerCase());
       updateFields[col] = transform((updates as any)[key]);
     }
+  }
+
+  if (updates.templateId !== undefined || updates.templateSid !== undefined) {
+    const resolvedTemplateId = updates.templateId ?? existing.template_id ?? null;
+    const template = resolvedTemplateId ? await db.collection('templates').findOne({ _id: new ObjectId(resolvedTemplateId) }) : null;
+    updateFields.template_sid = updates.templateSid || template?.sid || null;
   }
 
   if (updates.contactListId !== undefined) {
@@ -342,10 +357,14 @@ export interface MessageRecord {
   price_amount: number | null;
   price_currency: string | null;
   queued_at: number | null;
+  pending_at: number | null;
+  pending_timestamp: string | null;
   sent_at: number | null;
+  sent_timestamp: string | null;
   delivered_at: number | null;
   read_at: number | null;
   failed_at: number | null;
+  failed_timestamp: string | null;
   undelivered_at: number | null;
   created_at: number;
 }

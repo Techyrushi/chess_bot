@@ -98,8 +98,13 @@ export async function handleStatusUpdate(params: Record<string, string>, signatu
   if (priceCurrency) updateFields.price_currency = priceCurrency;
 
   switch (mappedStatus) {
+    case 'queued':
+      if (!msg.pending_at) updateFields.pending_at = now;
+      if (!msg.pending_timestamp) updateFields.pending_timestamp = new Date().toISOString();
+      break;
     case 'sent':
       if (!msg.sent_at) updateFields.sent_at = now;
+      if (!msg.sent_timestamp) updateFields.sent_timestamp = new Date().toISOString();
       break;
     case 'delivered':
       if (!msg.delivered_at) updateFields.delivered_at = now;
@@ -109,6 +114,7 @@ export async function handleStatusUpdate(params: Record<string, string>, signatu
       break;
     case 'failed':
       if (!msg.failed_at) updateFields.failed_at = now;
+      if (!msg.failed_timestamp) updateFields.failed_timestamp = new Date().toISOString();
       break;
     case 'undelivered':
       if (!msg.undelivered_at) updateFields.undelivered_at = now;

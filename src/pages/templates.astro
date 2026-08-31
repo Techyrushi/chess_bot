@@ -17,50 +17,49 @@ const initialTemplates = await listTemplates();
       <button class="btn btn-primary btn-sm" data-modal-open="newTemplateModal">+ New Template</button>
     </div>
 
-    <div id="templatesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
-      {initialTemplates.length === 0 ? (
-        <div style="grid-column:1/-1;">
-          <div class="empty-state">
-            <div class="empty-state-icon">📝</div>
-            <div class="empty-state-title">No templates yet</div>
-            <div class="empty-state-subtitle">Create reusable message templates for your campaigns</div>
-          </div>
-        </div>
-      ) : (
-        initialTemplates.map(t => {
-          const vars = t.variables ? JSON.parse(t.variables) : null;
-          const meta = statusMeta(t.status);
-          return (
-            <div class="card" style="padding:18px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <div>
-                  <div style="font-weight:600;font-size:15px;">{t.name}</div>
-                  <div style="display:flex;gap:6px;margin-top:4px;">
-                    <span class="chip">{t.language || 'en'}</span>
-                    {t.category && <span class="chip">{t.category}</span>}
-                    {t.status && <span class={`badge ${meta.cls}`}>{meta.label}</span>}
-                  </div>
-                </div>
-                <div style="display:flex;gap:6px;">
-                  <button class="btn btn-sm btn-secondary btn-edit" data-id={t.id}>✏️</button>
-                  <button class="btn btn-sm btn-danger btn-delete" data-id={t.id}>🗑</button>
-                </div>
-              </div>
-              <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;white-space:pre-wrap;font-size:13px;">{t.body}</div>
-              {t.media_url && (
-                <div style="margin-top:8px;font-size:12px;color:var(--text-muted);word-break:break-all;">
-                  📎 Media: <a href={t.media_url} target="_blank" rel="noopener">{t.media_url}</a> {t.media_type ? `(${t.media_type})` : ''}
-                </div>
-              )}
-              {vars && vars.length > 0 && (
-                <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">
-                  Variables: <code>{vars.join(', ')}</code>
-                </div>
-              )}
-            </div>
-          );
-        })
-      )}
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span class="badge badge-primary">Default fallback: <span id="defaultTemplateBadge">Not set</span></span>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>SID</th>
+            <th>Language</th>
+            <th>Status</th>
+            <th>Body</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="templatesTableBody">
+          {initialTemplates.length === 0 ? (
+            <tr>
+              <td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">No templates yet</td>
+            </tr>
+          ) : (
+            initialTemplates.map(t => {
+              const meta = statusMeta(t.status);
+              return (
+                <tr>
+                  <td style="font-weight:600;">{t.name || 'Untitled'}</td>
+                  <td style="font-family:monospace;">{t.sid || '-'}</td>
+                  <td>{t.language || 'en'}</td>
+                  <td><span class={`badge ${meta.cls}`}>{meta.label}</span></td>
+                  <td style="max-width:260px;white-space:normal;">{t.body ? (t.body.length > 90 ? `${t.body.slice(0, 90)}...` : t.body) : '-'}</td>
+                  <td>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button class="btn btn-sm btn-secondary btn-edit" data-id={t.id}>✏️ Edit</button>
+                      <button class="btn btn-sm btn-danger btn-delete" data-id={t.id}>🗑 Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -70,8 +69,8 @@ const initialTemplates = await listTemplates();
       <form id="newTemplateForm">
         <div class="modal-body">
           <div class="form-grid">
-            <div class="form-group"><label>Template Name *</label><input name="name" required placeholder="welcome_message" /></div>
-            <div class="form-group"><label>Twilio SID (optional)</label><input name="sid" placeholder="HX..." /></div>
+            <div class="form-group"><label>Label *</label><input name="name" required placeholder="Welcome message" /></div>
+            <div class="form-group"><label>Twilio SID *</label><input name="sid" required placeholder="HX..." /></div>
             <div class="form-group"><label>Media URL (optional)</label><input id="templateMediaUrl" name="mediaUrl" type="url" placeholder="https://example.com/image.jpg" /></div>
             <div class="form-group">
               <label>Upload Media File (optional)</label>
@@ -108,8 +107,8 @@ const initialTemplates = await listTemplates();
             </div>
           </div>
           <div class="form-group">
-            <label>Body *</label>
-            <textarea name="body" rows="6" placeholder={`Hello {'{{1}}'}, thank you for your interest in {'{{2}}'}...`} required></textarea>
+            <label>Body (optional)</label>
+            <textarea name="body" rows="6" placeholder={`Hello {'{{1}}'}, thank you for your interest in {'{{2}}'}...`}></textarea>
             <div class="form-hint">Use {'{{1}}'}, {'{{2}}'} for template variables, or {'{{name}}'}, {'{{company}}'} etc.</div>
           </div>
         </div>
@@ -128,8 +127,8 @@ const initialTemplates = await listTemplates();
         <input type="hidden" name="id" />
         <div class="modal-body">
           <div class="form-grid">
-            <div class="form-group"><label>Template Name *</label><input name="name" required placeholder="welcome_message" /></div>
-            <div class="form-group"><label>Twilio SID (optional)</label><input name="sid" placeholder="HX..." /></div>
+            <div class="form-group"><label>Label *</label><input name="name" required placeholder="Welcome message" /></div>
+            <div class="form-group"><label>Twilio SID *</label><input name="sid" required placeholder="HX..." /></div>
             <div class="form-group"><label>Media URL (optional)</label><input id="editTemplateMediaUrl" name="mediaUrl" type="url" placeholder="https://example.com/image.jpg" /></div>
             <div class="form-group">
               <label>Upload Media File (optional)</label>
@@ -166,8 +165,8 @@ const initialTemplates = await listTemplates();
             </div>
           </div>
           <div class="form-group">
-            <label>Body *</label>
-            <textarea name="body" rows="6" required></textarea>
+            <label>Body (optional)</label>
+            <textarea name="body" rows="6"></textarea>
             <div class="form-hint">Use {'{{1}}'}, {'{{2}}'} for template variables, or {'{{name}}'}, {'{{company}}'} etc.</div>
           </div>
         </div>
@@ -182,69 +181,86 @@ const initialTemplates = await listTemplates();
   <script>
     import { api, toast, escapeHtml, setupModals, closeModal, openModal, statusMeta } from '../scripts/app.js';
     setupModals();
-    const grid = document.getElementById('templatesGrid')!;
-
     async function loadTemplates() {
       try {
-        const list = await api('/api/templates');
-        if (!list.length) {
-          grid.innerHTML = `<div style="grid-column:1/-1;"><div class="empty-state"><div class="empty-state-icon">📝</div><div class="empty-state-title">No templates yet</div><div class="empty-state-subtitle">Create reusable message templates for your campaigns</div></div></div>`;
-          return;
+        const [list, settings] = await Promise.all([
+          api('/api/templates'),
+          api('/api/settings')
+        ]);
+
+        const defaultSid = settings.default_whatsapp_template_sid || '';
+        const defaultBadge = document.getElementById('defaultTemplateBadge');
+        if (defaultBadge) {
+          defaultBadge.textContent = defaultSid ? defaultSid : 'Not set';
         }
-        grid.innerHTML = list.map((t: any) => {
-          const vars = t.variables ? JSON.parse(t.variables) : null;
-          return `<div class="card" style="padding:18px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-              <div>
-                <div style="font-weight:600;font-size:15px;">${escapeHtml(t.name)}</div>
-                <div style="display:flex;gap:6px;margin-top:4px;">
-                  <span class="chip">${escapeHtml(t.language || 'en')}</span>
-                  ${t.category ? `<span class="chip">${escapeHtml(t.category)}</span>` : ''}
-                  ${t.status ? `<span class="badge ${statusMeta(t.status).cls}">${statusMeta(t.status).label}</span>` : ''}
+
+        const rows = list.map((t: any) => {
+          const meta = statusMeta(t.status);
+          const bodyPreview = t.body ? (t.body.length > 90 ? `${t.body.slice(0, 90)}...` : t.body) : '-';
+          return `
+            <tr>
+              <td style="font-weight:600;">${escapeHtml(t.name || 'Untitled')}</td>
+              <td style="font-family:monospace;">${escapeHtml(t.sid || '-')}</td>
+              <td>${escapeHtml(t.language || 'en')}</td>
+              <td><span class="badge ${meta.cls}">${meta.label}</span></td>
+              <td style="max-width:260px;white-space:normal;">${escapeHtml(bodyPreview)}</td>
+              <td>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button class="btn btn-sm btn-secondary btn-edit" data-id="${t.id}">✏️ Edit</button>
+                  <button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}">🗑 Delete</button>
                 </div>
-              </div>
-              <div style="display:flex;gap:6px;">
-                <button class="btn btn-sm btn-secondary btn-edit" data-id="${t.id}">✏️</button>
-                <button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}">🗑</button>
-              </div>
-            </div>
-            <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;white-space:pre-wrap;font-size:13px;">${escapeHtml(t.body)}</div>
-            ${t.media_url ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);word-break:break-all;">📎 Media: <a href="${escapeHtml(t.media_url)}" target="_blank" rel="noopener">${escapeHtml(t.media_url)}</a> ${t.media_type ? `(${escapeHtml(t.media_type)})` : ''}</div>` : ''}
-            ${vars?.length ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Variables: <code>${escapeHtml(vars.join(', '))}</code></div>` : ''}
-          </div>`;
+              </td>
+            </tr>`;
         }).join('');
-        grid.querySelectorAll('.btn-edit').forEach(b => b.addEventListener('click', async () => {
-          const id = (b as any).dataset.id;
-          try {
-            const t = await api(`/api/templates/${id}`);
-            const f = document.getElementById('editTemplateForm') as HTMLFormElement;
-            const idInp = f.querySelector<HTMLInputElement>('[name="id"]');
-            const nameInp = f.querySelector<HTMLInputElement>('[name="name"]');
-            const sidInp = f.querySelector<HTMLInputElement>('[name="sid"]');
-            const mediaInp = f.querySelector<HTMLInputElement>('[name="mediaUrl"]');
-            const mediaTypeInp = f.querySelector<HTMLSelectElement>('[name="mediaType"]');
-            const langInp = f.querySelector<HTMLSelectElement>('[name="language"]');
-            const catInp = f.querySelector<HTMLSelectElement>('[name="category"]');
-            const bodyInp = f.querySelector<HTMLTextAreaElement>('[name="body"]');
-            if (idInp) idInp.value = t.id;
-            if (nameInp) nameInp.value = t.name || '';
-            if (sidInp) sidInp.value = t.sid || '';
-            if (mediaInp) mediaInp.value = t.media_url || '';
-            if (mediaTypeInp) mediaTypeInp.value = t.media_type || '';
-            if (langInp) langInp.value = t.language || 'en';
-            if (catInp) catInp.value = t.category || 'marketing';
-            if (bodyInp) bodyInp.value = t.body || '';
-            openModal('editTemplateModal');
-          } catch(_) {}
-        }));
-        grid.querySelectorAll('.btn-delete').forEach(b => b.addEventListener('click', async () => {
-          if (!confirm('Delete this template?')) return;
-          const id = (b as any).dataset.id;
-          try { await api(`/api/templates/${id}`, { method: 'DELETE' }); toast('Template deleted', 'success'); loadTemplates(); }
-          catch(_) {}
-        }));
+
+        const tbody = document.getElementById('templatesTableBody');
+        if (tbody) {
+          tbody.innerHTML = list.length ? rows : `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">No templates yet</td></tr>`;
+        }
       } catch(_) {}
     }
+
+    document.addEventListener('click', async (event) => {
+      const editBtn = (event.target as HTMLElement)?.closest('.btn-edit');
+      if (editBtn) {
+        const id = (editBtn as HTMLElement).dataset.id;
+        if (!id) return;
+        try {
+          const t = await api(`/api/templates/${id}`);
+          const f = document.getElementById('editTemplateForm') as HTMLFormElement;
+          const idInp = f.querySelector<HTMLInputElement>('[name="id"]');
+          const nameInp = f.querySelector<HTMLInputElement>('[name="name"]');
+          const sidInp = f.querySelector<HTMLInputElement>('[name="sid"]');
+          const mediaInp = f.querySelector<HTMLInputElement>('[name="mediaUrl"]');
+          const mediaTypeInp = f.querySelector<HTMLSelectElement>('[name="mediaType"]');
+          const langInp = f.querySelector<HTMLSelectElement>('[name="language"]');
+          const catInp = f.querySelector<HTMLSelectElement>('[name="category"]');
+          const bodyInp = f.querySelector<HTMLTextAreaElement>('[name="body"]');
+          if (idInp) idInp.value = t.id;
+          if (nameInp) nameInp.value = t.name || '';
+          if (sidInp) sidInp.value = t.sid || '';
+          if (mediaInp) mediaInp.value = t.media_url || '';
+          if (mediaTypeInp) mediaTypeInp.value = t.media_type || '';
+          if (langInp) langInp.value = t.language || 'en';
+          if (catInp) catInp.value = t.category || 'marketing';
+          if (bodyInp) bodyInp.value = t.body || '';
+          openModal('editTemplateModal');
+        } catch(_) {}
+        return;
+      }
+
+      const deleteBtn = (event.target as HTMLElement)?.closest('.btn-delete');
+      if (deleteBtn) {
+        const id = (deleteBtn as HTMLElement).dataset.id;
+        if (!id) return;
+        if (!confirm('Delete this template?')) return;
+        try {
+          await api(`/api/templates/${id}`, { method: 'DELETE' });
+          toast('Template deleted', 'success');
+          await loadTemplates();
+        } catch(_) {}
+      }
+    });
 
     const mediaFileInput = document.getElementById('templateMediaFile') as HTMLInputElement;
     const mediaUrlInput = document.getElementById('templateMediaUrl') as HTMLInputElement;
@@ -315,6 +331,14 @@ const initialTemplates = await listTemplates();
       e.preventDefault();
       const target = e.target as HTMLFormElement;
       const data = Object.fromEntries(new FormData(target).entries());
+      if (!String(data.name || '').trim()) {
+        toast('Template label is required', 'error', 'Validation');
+        return;
+      }
+      if (!String(data.sid || '').trim()) {
+        toast('Template SID is required', 'error', 'Validation');
+        return;
+      }
       try {
         await api('/api/templates', { method: 'POST', body: data });
         toast('Template saved', 'success');
@@ -322,7 +346,7 @@ const initialTemplates = await listTemplates();
         uploadStatusHint.textContent = 'Upload JPG, PNG, MP4, PDF';
         uploadStatusHint.style.color = 'var(--text-muted)';
         closeModal('newTemplateModal');
-        loadTemplates();
+        await loadTemplates();
       } catch(_) {}
     });
 
@@ -333,13 +357,21 @@ const initialTemplates = await listTemplates();
       const idInp = target.querySelector<HTMLInputElement>('[name="id"]');
       const id = idInp ? idInp.value : '';
       const data = Object.fromEntries(new FormData(target).entries());
+      if (!String(data.name || '').trim()) {
+        toast('Template label is required', 'error', 'Validation');
+        return;
+      }
+      if (!String(data.sid || '').trim()) {
+        toast('Template SID is required', 'error', 'Validation');
+        return;
+      }
       delete (data as any).id;
       try {
         await api(`/api/templates/${id}`, { method: 'PUT', body: data });
         toast('Template updated', 'success');
         target.reset();
         closeModal('editTemplateModal');
-        loadTemplates();
+        await loadTemplates();
       } catch(_) {}
     });
 

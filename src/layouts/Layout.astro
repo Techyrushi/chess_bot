@@ -73,6 +73,9 @@ const unread = stats?.unreadMessages || 0;
             <a href="/import" class="nav-link {pathname.startsWith('/import') || pathname.startsWith('/contact') ? 'active' : ''}">
               <span class="nav-link-icon">📥</span> Import Contacts
             </a>
+            <a href="/templates" class="nav-link {pathname === '/templates' ? 'active' : ''}">
+              <span class="nav-link-icon">📝</span> Templates
+            </a>
             <a href="/settings" class="nav-link {pathname.startsWith('/setting') ? 'active' : ''}">
               <span class="nav-link-icon">⚙️</span> Settings
             </a>

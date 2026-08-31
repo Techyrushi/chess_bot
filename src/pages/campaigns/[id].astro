@@ -72,19 +72,20 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
             <div class="card-header"><div class="card-title">Step 2: Compose Message</div></div>
 
             <div class="form-group">
-              <label>Use Approved WhatsApp Template?</label>
+              <label>Approved WhatsApp Template *</label>
               <select id="useTemplateSelect">
-                <option value="no">No — compose custom message</option>
-                {templates.map(t => (
+                <option value="">Select an approved template...</option>
+                {templates.filter(t => t.sid && t.status !== 'rejected').map(t => (
                   <option value={t.id} selected={campaign?.template_id === t.id}>
-                    Template: {t.name} ({t.language})
+                    {t.name} — {t.sid} ({t.language})
                   </option>
                 ))}
               </select>
+              <div class="form-hint">Only approved Twilio template SIDs are allowed for sending.</div>
             </div>
 
             <div class="form-group" id="bodyGroup">
-              <label>Message Body *</label>
+              <label>Template Message *</label>
               <textarea id="messageBody" rows="8" placeholder={`Hello {'{{name}}'}! We are writing to you from {'{{company}}'} about...`}>{initialBody}</textarea>
               <div class="form-hint">
                 <strong>Variables:</strong> <code>{'{{name}}'}</code>, <code>{'{{company}}'}</code>, <code>{'{{city}}'}</code>, <code>{'{{email}}'}</code>, <code>{'{{phone}}'}</code> and any custom columns from your import
@@ -474,21 +475,24 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
       const templatesDefs = templates;
       useTemplateSel?.addEventListener('change', () => {
         const v = useTemplateSel.value;
-        if (v && v !== 'no') {
-          const t = templatesDefs.find((x: any) => x.id === v);
+        if (!v) {
           const mb = $<HTMLTextAreaElement>('#messageBody');
-          if (t && t.body && mb) {
-            mb.value = t.body;
-            if (t.media_url) {
-              const mu = $<HTMLInputElement>('#mediaUrl');
-              if (mu) mu.value = t.media_url;
-            }
-            if (t.media_type) {
-              const mt = $<HTMLSelectElement>('#mediaType');
-              if (mt) mt.value = t.media_type;
-            }
-            updatePreview();
+          if (mb && !mb.value.trim()) mb.value = '';
+          return;
+        }
+        const t = templatesDefs.find((x: any) => x.id === v);
+        const mb = $<HTMLTextAreaElement>('#messageBody');
+        if (t && t.body && mb) {
+          mb.value = t.body;
+          if (t.media_url) {
+            const mu = $<HTMLInputElement>('#mediaUrl');
+            if (mu) mu.value = t.media_url;
           }
+          if (t.media_type) {
+            const mt = $<HTMLSelectElement>('#mediaType');
+            if (mt) mt.value = t.media_type;
+          }
+          updatePreview();
         }
       });
 
@@ -503,8 +507,9 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
         return {
           name: cn ? cn.value.trim() : '',
           contactListId: listSelect && listSelect.value ? listSelect.value : undefined,
-          templateId: useTemplateSel && useTemplateSel.value !== 'no' ? useTemplateSel.value : undefined,
-          useTemplate: useTemplateSel ? useTemplateSel.value !== 'no' : false,
+          templateId: useTemplateSel && useTemplateSel.value ? useTemplateSel.value : undefined,
+          templateSid: useTemplateSel && useTemplateSel.value ? (templates.find((t: any) => t.id === useTemplateSel.value)?.sid || '') : '',
+          useTemplate: !!(useTemplateSel && useTemplateSel.value),
           messageBody: mbd ? mbd.value : '',
           mediaUrl: mu && mu.value ? mu.value : undefined,
           mediaType: mty && mty.value ? mty.value : undefined,
@@ -545,7 +550,8 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
         const payload = collectPayload();
         if (!payload.name) { toast('Campaign name required', 'error'); setStep(1); return; }
         if (!payload.contactListId) { toast('Please select a contact list', 'error'); setStep(1); return; }
-        if (!payload.messageBody) { toast('Please write a message', 'error'); setStep(2); return; }
+        if (!payload.templateId || !payload.templateSid) { toast('Please choose an approved WhatsApp template', 'error'); setStep(2); return; }
+        if (!payload.messageBody) { toast('Please select a template with a message body', 'error'); setStep(2); return; }
         try {
           let c;
           if (isNew) {

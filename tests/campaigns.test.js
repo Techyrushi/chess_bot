@@ -76,3 +76,18 @@ test('extractVariables - dedup', () => {
   const vars = extractVariables('{{name}} and {{name}}');
   assert.equal(vars.length, 1);
 });
+
+function normalizeTwilioMessageStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (['sent', 'delivered', 'read'].includes(normalized)) return 'sent';
+  if (['accepted', 'queued', 'sending', 'pending'].includes(normalized)) return 'pending';
+  return 'failed';
+}
+
+test('normalizeTwilioMessageStatus - maps approved template delivery states', () => {
+  assert.equal(normalizeTwilioMessageStatus('queued'), 'pending');
+  assert.equal(normalizeTwilioMessageStatus('sending'), 'pending');
+  assert.equal(normalizeTwilioMessageStatus('sent'), 'sent');
+  assert.equal(normalizeTwilioMessageStatus('delivered'), 'sent');
+  assert.equal(normalizeTwilioMessageStatus('failed'), 'failed');
+});

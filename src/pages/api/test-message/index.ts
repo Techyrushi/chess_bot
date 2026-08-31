@@ -16,25 +16,35 @@ export const POST: APIRoute = async ({ request }) => {
     if (await isOptedOut(phone)) return new Response(JSON.stringify({ error: 'Number opted out' }), { status: 400 });
     
     const settings = await getTwilioSettings();
-    const templateSid = settings.defaultTemplateSid;
+    const templateSid = String(body.templateSid || settings.defaultTemplateSid || '').trim();
 
     if (!templateSid) {
-      return new Response(JSON.stringify({ error: 'WhatsApp template not configured' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'Approved WhatsApp template SID is required' }), { status: 400 });
     }
 
-    // Send using approved template
-    const templateVariables = body.templateVariables || [
-      body.body || 'Test message from WhatsApp Campaign Manager'
-    ];
+    const templateVariables = Array.isArray(body.templateVariables) ? body.templateVariables : [];
+
+    const callbackUrl = twilio.resolveTwilioStatusCallbackUrl(process.env.APP_URL || process.env.PUBLIC_URL);
+    if (!callbackUrl) {
+      return new Response(JSON.stringify({
+        success: false,
+        status: 'failed',
+        templateSid,
+        errorMessage: 'APP_URL must be set to a public HTTPS URL for Twilio status callbacks. Use an ngrok URL or deployed domain, not localhost.',
+        timestamp: new Date().toISOString(),
+        message: 'Failed to send message'
+      }), { status: 400 });
+    }
 
     const r = await twilio.sendWhatsAppTemplate({
       to: phone,
       templateSid,
       templateVariables,
-      statusCallback: `${process.env.APP_URL || 'http://localhost:4321'}/api/webhooks/twilio/status`
+      statusCallback: `${callbackUrl}/api/webhooks/twilio/status`
     });
 
-    const now = Date.now();
+    const resolvedStatus = r.success ? twilio.normalizeTwilioMessageStatus(r.status) : 'failed';
+    const timestamp = new Date().toISOString();
     await createAuditLog({
       adminId: auth.adminId,
       action: 'test_message_sent',
@@ -42,20 +52,20 @@ export const POST: APIRoute = async ({ request }) => {
         to: phone,
         sid: r.sid,
         templateSid,
-        status: r.success ? 'queued' : 'failed',
+        status: resolvedStatus,
         error: r.errorMessage,
-        timestamp: new Date().toISOString()
+        timestamp
       }
     });
 
     return new Response(JSON.stringify({
       success: r.success,
       sid: r.sid,
-      status: r.status,
+      status: resolvedStatus,
       templateSid,
       errorMessage: r.errorMessage,
-      timestamp: new Date().toISOString(),
-      message: r.success ? 'Message queued for delivery using approved template' : 'Failed to send message'
+      timestamp,
+      message: r.success ? (resolvedStatus === 'pending' ? 'Message accepted and pending delivery using approved template' : 'Message sent using approved template') : 'Failed to send message'
     }), { status: r.success ? 200 : 400 });
   } catch (e: any) {
     console.error('Test message error:', e);

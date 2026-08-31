@@ -36,6 +36,9 @@ export const POST: APIRoute = async ({ request }) => {
     if (body.twilio_webhook_secret !== undefined && !body.twilio_webhook_secret.startsWith('••••')) {
       await setSetting('twilio_webhook_secret', String(body.twilio_webhook_secret));
     }
+    if (body.default_whatsapp_template_sid !== undefined) {
+      await setSetting('default_whatsapp_template_sid', String(body.default_whatsapp_template_sid).trim());
+    }
     if (body.send_delay_min_ms !== undefined) {
       await setSetting('send_delay_min_ms', String(body.send_delay_min_ms));
     }

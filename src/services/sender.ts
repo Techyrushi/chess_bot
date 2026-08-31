@@ -1,5 +1,5 @@
 import { getDb, mapDoc } from '@db/index';
-import { sendWhatsAppMessage, sendWhatsAppTemplate, isConfigured } from './twilio';
+import { sendWhatsAppMessage, sendWhatsAppTemplate, isConfigured, resolveTwilioStatusCallbackUrl } from './twilio';
 import { getCampaign, transitionCampaignStatus, getCampaignAnalytics } from './campaigns';
 import { isOptedOut } from './contacts';
 import { getSendSettings, getTwilioSettings } from '@lib/settings';
@@ -115,7 +115,9 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
       continue;
     }
 
-    const statusCallback = `${process.env.APP_URL || 'http://localhost:4321'}/api/webhooks/twilio/status`;
+    const statusCallback = resolveTwilioStatusCallbackUrl(process.env.APP_URL || process.env.PUBLIC_URL)
+      ? `${resolveTwilioStatusCallbackUrl(process.env.APP_URL || process.env.PUBLIC_URL)}/api/webhooks/twilio/status`
+      : undefined;
 
     // Get template from campaign or use default from settings
     const twilioSettings = await getTwilioSettings();
@@ -153,20 +155,27 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
     const now = Date.now();
 
     if (result.success) {
-      const sentTimestamp = new Date().toISOString();
-      console.log(`[${sentTimestamp}] [Campaign ${campaignId}] ✅ Message sent to ${msg.phone} | SID: ${result.sid} | Status: ${result.status}`);
-      
+      const normalizedStatus = result.status ? (result.status === 'sent' || result.status === 'delivered' || result.status === 'read' ? 'sent' : 'pending') : 'pending';
+      const eventTimestamp = new Date().toISOString();
+      console.log(`[${eventTimestamp}] [Campaign ${campaignId}] 📣 Message status for ${msg.phone} | SID: ${result.sid} | Status: ${normalizedStatus}`);
+
+      const update: Record<string, any> = {
+        sid: result.sid ?? null,
+        status: normalizedStatus,
+        updated_at: now
+      };
+
+      if (normalizedStatus === 'sent') {
+        update.sent_at = now;
+        update.sent_timestamp = eventTimestamp;
+      } else {
+        update.pending_at = now;
+        update.pending_timestamp = eventTimestamp;
+      }
+
       await db.collection('messages').updateOne(
         { _id: new ObjectId(msg.id) },
-        {
-          $set: {
-            sid: result.sid ?? null,
-            status: 'sent',
-            sent_at: now,
-            sent_timestamp: sentTimestamp,
-            updated_at: now
-          }
-        }
+        { $set: update }
       );
       processed++;
     } else {
@@ -186,6 +195,8 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
               error_code: String(result.errorCode || ''),
               error_message: result.errorMessage || '',
               last_error_timestamp: errorTimestamp,
+              pending_at: now,
+              pending_timestamp: errorTimestamp,
               status: 'pending',
               updated_at: now
             }

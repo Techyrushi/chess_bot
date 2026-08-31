@@ -140,23 +140,26 @@ const initialCampaigns = initialData.campaigns || [];
               </div></td>
             </tr>`;
           }).join('');
-
-          tbody.querySelectorAll('.btn-delete-campaign').forEach(b => b.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!confirm('Delete this campaign?')) return;
-            const id = (b as any).dataset.id;
-            try {
-              await api(`/api/campaigns/${id}`, { method: 'DELETE' });
-              toast('Campaign deleted', 'success');
-              loadCampaigns();
-            } catch (_) {}
-          }));
         }
         pagination.classList.add('pagination');
         paginateUi({ container: pagination, total: data.total, page, perPage, onChange: (p: number) => { page = p; loadCampaigns(); } });
       } catch(_) {}
     }
+
+    document.addEventListener('click', async (event) => {
+      const deleteBtn = (event.target as HTMLElement)?.closest('.btn-delete-campaign');
+      if (!deleteBtn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const id = (deleteBtn as HTMLElement).dataset.id;
+      if (!id || !confirm('Delete this campaign?')) return;
+      try {
+        await api(`/api/campaigns/${id}`, { method: 'DELETE' });
+        toast('Campaign deleted', 'success');
+        await loadCampaigns();
+      } catch (_) {}
+    });
+
     searchInput.addEventListener('input', loadCampaigns);
     statusFilter.addEventListener('change', () => { page = 1; loadCampaigns(); });
     loadCampaigns();
