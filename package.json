@@ -1,0 +1,40 @@
+{
+  "name": "whatsapp-campaign-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Production-grade WhatsApp Bulk Campaign Manager",
+  "scripts": {
+    "dev": "node --env-file=.env node_modules/astro/astro.js dev",
+    "start": "node --env-file=.env node_modules/astro/astro.js dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "db:init": "node --env-file=.env scripts/init-db.js",
+    "db:seed": "node --env-file=.env scripts/seed-db.js",
+    "test": "node --env-file=.env --test tests/validation.test.js tests/campaigns.test.js tests/crypto.test.js tests/excel.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.3",
+    "@astrojs/node": "^8.3.4",
+    "@types/mongodb": "^4.0.6",
+    "astro": "^4.16.0",
+    "bcryptjs": "^3.0.3",
+    "cookie": "^0.6.0",
+    "mongodb": "^7.6.0",
+    "nanoid": "^5.0.7",
+    "twilio": "^5.3.0",
+    "typescript": "^5.5.4",
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie": "^0.6.0",
+    "@types/node": "^22.5.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

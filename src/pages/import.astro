@@ -1,0 +1,385 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { listContactLists } from '../services/contacts';
+
+const initialLists = await listContactLists();
+---
+
+<Layout>
+  <Fragment slot="title">Import Contacts</Fragment>
+
+  <div class="breadcrumbs"><a href="/">Dashboard</a> / <a href="/contacts">Contacts</a> / <span>Import</span></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="stat-grid">
+    <div class="card">
+      <div class="card-header"><div class="card-title">1. Upload Excel / CSV File</div></div>
+      <div class="upload-dropzone" id="dropzone" style="cursor:pointer;">
+        <div class="upload-dropzone-icon">📁</div>
+        <div class="upload-dropzone-title">Drag & drop your Excel/CSV file here</div>
+        <div class="upload-dropzone-sub">or click to browse. Supports .xlsx, .xls, .csv (max 25 MB)</div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+        <button class="btn btn-primary" type="button" id="browseBtn" style="margin-top:12px;">Browse Files</button>
+      </div>
+      <div style="margin-top: 14px; display: flex; justify-content: center;">
+        <a href="/api/import/sample?format=csv" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">📥 Download Sample CSV</a>
+      </div>
+      <div id="fileInfo" style="display:none;margin-top:20px;padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div><strong id="fileName"></strong> <span id="fileSize" style="color:var(--text-muted);font-size:12px;"></span></div>
+          <button class="btn btn-sm btn-secondary" id="clearFileBtn">✕ Change</button>
+        </div>
+        <div class="progress" style="margin-bottom:8px;"><div class="progress-bar" id="uploadProgress" style="width:0%"></div></div>
+        <div id="fileStatusText" style="font-size:12px;color:var(--text-muted);">Reading file...</div>
+      </div>
+      <div id="uploadErrorBox" style="display:none;margin-top:14px;padding:12px;background:var(--danger-light);color:var(--danger);border-radius:var(--radius);font-size:13px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">2. Column Mapping & Preview</div></div>
+      <div id="mappingArea" style="display:none;">
+        <div style="margin-bottom:16px;padding:14px;background:var(--bg-tertiary);border-radius:var(--radius);">
+          <label style="font-weight:600;">Add to Contact List (optional):</label>
+          <div style="display:flex;gap:10px;margin-top:6px;">
+            <select id="targetListSelect" style="flex:1;">
+              <option value="">Don't add to list (import as standalone contacts)</option>
+              {initialLists.map(l => (
+                <option value={l.id}>{l.name} ({l.contact_count} contacts)</option>
+              ))}
+            </select>
+            <button class="btn btn-secondary btn-sm" id="newListBtn" type="button">+ New List</button>
+          </div>
+        </div>
+
+        <div style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;font-weight:500;">
+          Map your Excel columns to contact fields. <span style="color:var(--danger);">* Phone is required.</span>
+        </div>
+        <div class="column-mapping-grid" id="mappingGrid"></div>
+
+        <div style="margin-top:20px;padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <label style="font-weight:600;margin:0;">Data Preview (First 5 Rows):</label>
+            <span id="totalRowsBadge" class="chip" style="background:var(--accent-light);color:var(--accent);font-weight:600;">0 total rows</span>
+          </div>
+          <div class="table-wrapper" style="max-height:280px;overflow:auto;background:var(--bg-primary);border-radius:6px;">
+            <table id="previewTable" style="margin:0;font-size:12px;">
+              <thead id="previewHead"></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end;align-items:center;">
+          <button class="btn btn-secondary" id="resetBtn" type="button">Reset</button>
+          <button class="btn btn-primary" id="importBtn" type="button" style="padding:10px 24px;font-weight:600;font-size:14px;">
+            💾 Save & Import Contacts
+          </button>
+        </div>
+      </div>
+
+      <div id="mappingEmpty" style="color:var(--text-muted);text-align:center;padding:60px 20px;">
+        <div style="font-size:36px;margin-bottom:12px;">📄</div>
+        <div style="font-weight:600;font-size:15px;color:var(--text-primary);margin-bottom:4px;">No File Uploaded</div>
+        <div>Upload an Excel (.xlsx, .xls) or CSV file to preview columns and save contacts</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard" style="margin-top:20px;display:none;">
+    <div class="card-header"><div class="card-title">Import Results</div></div>
+    <div id="resultBody"></div>
+  </div>
+
+  <div class="modal-overlay" id="newListModal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Create Contact List</div><button class="modal-close" data-modal-close>✕</button></div>
+      <form id="newListForm">
+        <div class="modal-body">
+          <div class="form-group"><label>List Name *</label><input name="name" required placeholder="e.g. Customers - Sept 2026" /></div>
+          <div class="form-group"><label>Description</label><textarea name="description" placeholder="Optional description"></textarea></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Create List</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    import { api, toast, escapeHtml, setupModals, openModal, closeModal, formatFileSize, formatNumber } from '../scripts/app.js';
+    setupModals();
+
+    const dropzone = document.getElementById('dropzone')!;
+    const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+    const browseBtn = document.getElementById('browseBtn')!;
+    const fileInfo = document.getElementById('fileInfo')!;
+    const fileNameEl = document.getElementById('fileName')!;
+    const fileSizeEl = document.getElementById('fileSize')!;
+    const fileStatusText = document.getElementById('fileStatusText')!;
+    const uploadErrorBox = document.getElementById('uploadErrorBox')!;
+    const clearFileBtn = document.getElementById('clearFileBtn')!;
+    const uploadProgress = document.getElementById('uploadProgress')!;
+    const mappingArea = document.getElementById('mappingArea')!;
+    const mappingEmpty = document.getElementById('mappingEmpty')!;
+    const mappingGrid = document.getElementById('mappingGrid')!;
+    const previewHead = document.getElementById('previewHead')!;
+    const previewBody = document.getElementById('previewBody')!;
+    const totalRowsBadge = document.getElementById('totalRowsBadge')!;
+    const importBtn = document.getElementById('importBtn') as HTMLButtonElement;
+    const resetBtn = document.getElementById('resetBtn')!;
+    const targetListSelect = document.getElementById('targetListSelect') as HTMLSelectElement;
+    const newListBtn = document.getElementById('newListBtn')!;
+    const resultCard = document.getElementById('resultCard')!;
+    const resultBody = document.getElementById('resultBody')!;
+
+    let currentFile: File | null = null;
+    let previewData: any = null;
+    let columns: string[] = [];
+
+    const FIELDS = [
+      { key: 'phone', label: 'Phone', required: true, icon: '📱' },
+      { key: 'name', label: 'Name', required: false, icon: '👤' },
+      { key: 'company', label: 'Company', required: false, icon: '🏢' },
+      { key: 'city', label: 'City', required: false, icon: '📍' },
+      { key: 'email', label: 'Email', required: false, icon: '📧' },
+    ];
+
+    browseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+    dropzone.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).id !== 'browseBtn') fileInput.click();
+    });
+
+    ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('dragging'); }));
+    dropzone.addEventListener('drop', (e) => {
+      const files = (e as DragEvent).dataTransfer?.files;
+      if (files?.length) handleFile(files[0]);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files?.[0]) handleFile(fileInput.files[0]); });
+    clearFileBtn.addEventListener('click', resetAll);
+    resetBtn.addEventListener('click', resetAll);
+
+    async function loadLists() {
+      try {
+        const lists = await api('/api/contact-lists');
+        const currentVal = targetListSelect.value;
+        targetListSelect.innerHTML = '<option value="">Don\'t add to list (import as standalone contacts)</option>' +
+          lists.map((l: any) => `<option value="${l.id}" ${l.id === currentVal ? 'selected' : ''}>${escapeHtml(l.name)} (${l.contact_count} contacts)</option>`).join('');
+      } catch(_) {}
+    }
+    loadLists();
+
+    (document.getElementById('newListForm') as HTMLFormElement).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const data = Object.fromEntries(new FormData(f).entries());
+      try {
+        const r = await api('/api/contact-lists', { method: 'POST', body: data });
+        toast('Contact list created', 'success');
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = `${(data as any).name} (0 contacts)`;
+        opt.selected = true;
+        targetListSelect.appendChild(opt);
+        closeModal('newListModal');
+        f.reset();
+      } catch(_) {}
+    });
+    newListBtn.addEventListener('click', () => openModal('newListModal'));
+
+    async function handleFile(file: File) {
+      if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+        toast('Only .xlsx, .xls, or .csv files are supported', 'error');
+        return;
+      }
+      if (file.size > 25 * 1024 * 1024) {
+        toast('File too large (max 25 MB)', 'error');
+        return;
+      }
+
+      currentFile = file;
+      fileNameEl.textContent = file.name;
+      fileSizeEl.textContent = formatFileSize(file.size);
+      fileInfo.style.display = 'block';
+      fileStatusText.textContent = 'Uploading and analyzing file...';
+      uploadProgress.style.width = '30%';
+      uploadErrorBox.style.display = 'none';
+      resultCard.style.display = 'none';
+
+      const fd = new FormData();
+      fd.append('file', file);
+
+      try {
+        previewData = await api('/api/import/preview', { method: 'POST', body: fd });
+        console.log('Raw preview data received:', previewData);
+        
+        uploadProgress.style.width = '100%';
+        
+        if (!previewData || !previewData.preview) {
+          console.error('Invalid preview response structure:', previewData);
+          throw new Error('Invalid file format or server error');
+        }
+        
+        fileStatusText.textContent = `Analyzed successfully: ${formatNumber(previewData.preview?.totalRows || 0)} rows found`;
+        columns = previewData.preview?.columns || [];
+
+        console.log('Columns extracted:', columns);
+
+        if (!columns || columns.length === 0) {
+          console.error('Empty columns array:', columns, 'Full preview:', previewData.preview);
+          throw new Error('No valid columns or headers found in this file. Please ensure your file has a header row with column names.');
+        }
+
+        console.log('Preview success! Columns found:', columns);
+        renderMapping();
+        renderPreview();
+        mappingArea.style.display = 'block';
+        mappingEmpty.style.display = 'none';
+      } catch (err: any) {
+        uploadProgress.style.width = '0%';
+        uploadErrorBox.style.display = 'block';
+        const errorMsg = err.message || 'Failed to parse file';
+        console.error('Upload error:', errorMsg, 'Details:', err);
+        uploadErrorBox.textContent = 'Error parsing file: ' + errorMsg;
+        toast(errorMsg, 'error');
+      }
+    }
+
+    function renderMapping() {
+      const suggested = previewData?.preview?.suggestedMap || {};
+      const options = ['<option value="">(don\'t import)</option>']
+        .concat(columns.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`))
+        .join('');
+
+      mappingGrid.innerHTML = FIELDS.map(f => {
+        return `<div class="column-mapping-row" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div class="column-mapping-label" style="width:140px;font-weight:500;">
+            ${f.icon} ${f.label}${f.required ? ' <span style="color:var(--danger)">*</span>' : ''}
+          </div>
+          <div class="column-mapping-arrow" style="color:var(--text-muted);">→</div>
+          <select name="map_${f.key}" data-field="${f.key}" style="flex:1;" ${f.required ? 'required' : ''}>
+            ${options}
+          </select>
+        </div>`;
+      }).join('');
+
+      FIELDS.forEach(f => {
+        const sel = mappingGrid.querySelector<HTMLSelectElement>(`[data-field="${f.key}"]`);
+        if (sel) {
+          if (suggested[f.key]) sel.value = suggested[f.key];
+          sel.addEventListener('change', renderPreview);
+        }
+      });
+    }
+
+    function getColumnMap() {
+      const map: Record<string, string> = {};
+      mappingGrid.querySelectorAll('select').forEach((sel: any) => {
+        const field = sel.getAttribute('data-field');
+        if (sel.value) map[field] = sel.value;
+      });
+      return map;
+    }
+
+    function renderPreview() {
+      const map = getColumnMap();
+      const rows = previewData?.preview?.rows || [];
+      const totalRows = previewData?.preview?.totalRows || 0;
+      totalRowsBadge.textContent = `${formatNumber(totalRows)} total rows in file`;
+
+      const mappedFields = FIELDS.filter(f => map[f.key]);
+
+      if (mappedFields.length > 0) {
+        previewHead.innerHTML = '<tr>' +
+          '<th style="width:40px;">#</th>' +
+          mappedFields.map(f => `<th>${f.icon} ${f.label} <span style="font-weight:400;font-size:11px;color:var(--text-muted);">(${escapeHtml(map[f.key])})</span></th>`).join('') +
+          '</tr>';
+
+        previewBody.innerHTML = rows.slice(0, 5).map((r: any) =>
+          `<tr><td>${r.rowIndex}</td>` +
+          mappedFields.map(f => `<td>${escapeHtml(String(r.raw[map[f.key]] || ''))}</td>`).join('') +
+          '</tr>'
+        ).join('');
+      } else {
+        // Fallback: show first 4 raw columns from file
+        const shownCols = columns.slice(0, 4);
+        previewHead.innerHTML = '<tr><th style="width:40px;">#</th>' +
+          shownCols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+        previewBody.innerHTML = rows.slice(0, 5).map((r: any) =>
+          `<tr><td>${r.rowIndex}</td>` +
+          shownCols.map(c => `<td>${escapeHtml(String(r.raw[c] || ''))}</td>`).join('') +
+          '</tr>'
+        ).join('');
+      }
+    }
+
+    importBtn.addEventListener('click', async () => {
+      if (!currentFile) {
+        toast('Please upload a file first', 'error');
+        return;
+      }
+      const map = getColumnMap();
+      if (!map.phone) {
+        toast('Please map the Phone number column', 'error');
+        return;
+      }
+
+      importBtn.disabled = true;
+      importBtn.textContent = '⏳ Importing & Saving Contacts...';
+
+      try {
+        const fd = new FormData();
+        fd.append('file', currentFile);
+        fd.append('columnMap', JSON.stringify(map));
+        if (targetListSelect.value) fd.append('listId', targetListSelect.value);
+
+        const r = await api('/api/import/process', { method: 'POST', body: fd });
+
+        resultCard.style.display = 'block';
+        resultBody.innerHTML = `
+          <div class="stat-grid" style="margin-bottom:20px;">
+            <div class="stat-card"><div class="stat-icon" style="background:var(--success-light);color:var(--success);">✅</div><div class="stat-label">Created</div><div class="stat-value">${formatNumber(r.created)}</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:var(--info-light);color:var(--info);">🔄</div><div class="stat-label">Updated</div><div class="stat-value">${formatNumber(r.updated)}</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:var(--warning-light);color:var(--warning);">📋</div><div class="stat-label">Duplicates Skipped</div><div class="stat-value">${formatNumber((r.fileDuplicates || 0) + (r.duplicates || 0))}</div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:var(--danger-light);color:var(--danger);">❌</div><div class="stat-label">Invalid Rows</div><div class="stat-value">${formatNumber((r.fileErrors?.length || 0) + (r.errors?.length || 0))}</div></div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+            <a href="/contacts" class="btn btn-primary">👥 View Contacts List</a>
+            <a href="/campaigns/new" class="btn btn-success">✉️ Compose Campaign to this List</a>
+            <button class="btn btn-secondary" id="importAgainBtn" type="button">📥 Import Another File</button>
+          </div>
+          ${((r.fileErrors?.length || 0) + (r.errors?.length || 0) > 0) ? `<details style="margin-top:16px;"><summary style="cursor:pointer;padding:10px;background:var(--bg-tertiary);border-radius:var(--radius);font-weight:500;">View ${(r.fileErrors?.length || 0) + (r.errors?.length || 0)} skipped/invalid rows</summary>
+            <div class="table-wrapper" style="margin-top:10px;"><table><thead><tr><th>Row</th><th>Phone</th><th>Error</th></tr></thead><tbody>
+            ${[...(r.fileErrors || []), ...(r.errors || [])].slice(0, 100).map((e: any) =>
+              `<tr><td>${e.row || '-'}</td><td style="font-family:monospace;">${escapeHtml(e.phone || '')}</td><td>${escapeHtml(e.error || '')}</td></tr>`
+            ).join('')}
+            </tbody></table></div></details>` : ''}
+        `;
+
+        document.getElementById('importAgainBtn')?.addEventListener('click', resetAll);
+        toast(`Import completed! ${r.created} new contacts added`, 'success');
+      } catch (err: any) {
+        toast(err.message || 'Import failed', 'error');
+      } finally {
+        importBtn.disabled = false;
+        importBtn.textContent = '💾 Save & Import Contacts';
+      }
+    });
+
+    function resetAll() {
+      currentFile = null;
+      previewData = null;
+      columns = [];
+      fileInput.value = '';
+      fileInfo.style.display = 'none';
+      uploadErrorBox.style.display = 'none';
+      uploadProgress.style.width = '0%';
+      mappingArea.style.display = 'none';
+      mappingEmpty.style.display = 'block';
+      resultCard.style.display = 'none';
+    }
+  </script>
+</Layout>

@@ -1,0 +1,132 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout>
+  <Fragment slot="title">Inbox</Fragment>
+
+  <div class="breadcrumbs"><a href="/">Dashboard</a> / <span>Inbox</span></div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Inbox — WhatsApp Messages</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" id="markAllRead">✓ Mark all read</button>
+      </div>
+    </div>
+
+    <div class="filters-row">
+      <div style="flex:1;min-width:240px;">
+        <div class="search-input"><input type="search" id="searchInput" placeholder="Search by phone, name, or message..." /></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        <input type="checkbox" id="unreadOnly" style="width:auto;" />
+        Show unread only
+      </label>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Status</th><th>From</th><th>Profile</th><th>Message</th><th>Media</th><th>Received</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <div class="modal-overlay" id="replyModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Reply to <span id="replyTo"></span></div>
+        <button class="modal-close" data-modal-close>✕</button>
+      </div>
+      <form id="replyForm">
+        <input type="hidden" name="phone" />
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Your reply message</label>
+            <textarea name="body" rows="6" placeholder="Type your reply..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Media URL (optional)</label>
+            <input type="url" name="mediaUrl" placeholder="https://..." />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Send Reply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    import { api, toast, formatDate, escapeHtml, paginateUi, openModal, closeModal, setupModals } from '../scripts/app.js';
+    setupModals();
+    const tbody = document.getElementById('tbody')!;
+    const pagination = document.getElementById('pagination')!;
+    const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+    const unreadOnly = document.getElementById('unreadOnly') as HTMLInputElement;
+    let page = 1; const perPage = 30;
+
+    async function loadInbox() {
+      try {
+        const p = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+        if (searchInput.value.trim()) p.append('search', searchInput.value.trim());
+        if (unreadOnly.checked) p.append('unreadOnly', 'true');
+        const data = await api('/api/inbox?' + p.toString());
+        if (!data.messages.length) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:60px;"><div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">Inbox is empty</div><div class="empty-state-subtitle">Replies and incoming WhatsApp messages will appear here</div></div></td></tr>`;
+        } else {
+          tbody.innerHTML = data.messages.map((m: any) => {
+            const unread = m.is_read === 0;
+            return `<tr data-id="${m.id}" style="${unread ? 'font-weight:500;background:var(--accent-light);' : ''}">
+              <td>${unread ? '<span class="badge badge-primary">New</span>' : '<span class="badge badge-secondary">Read</span>'}</td>
+              <td style="font-family:monospace;font-size:12px;">${escapeHtml(m.from_phone)}</td>
+              <td><strong>${escapeHtml(m.profile_name || m.contact_name || '-')}</strong></td>
+              <td style="max-width:420px;">${m.body ? escapeHtml(m.body) : '<span style="color:var(--text-muted);"><media></span>'}</td>
+              <td>${m.media_url ? `<a href="${escapeHtml(m.media_url)}" target="_blank" class="chip">📎 ${escapeHtml(m.media_type || 'Media')}</a>` : '-'}</td>
+              <td>${formatDate(m.received_at)}</td>
+              <td><div class="row-actions">
+                <button class="btn btn-sm btn-secondary btn-reply" data-phone="${escapeHtml(m.from_phone)}">↩️ Reply</button>
+              </div></td>
+            </tr>`;
+          }).join('');
+          tbody.querySelectorAll('.btn-reply').forEach(b => b.addEventListener('click', () => {
+            const phone = (b as any).dataset.phone;
+            const replyPhoneInput = document.querySelector('#replyForm [name="phone"]') as HTMLInputElement;
+            if (replyPhoneInput) replyPhoneInput.value = phone;
+            document.getElementById('replyTo')!.textContent = phone;
+            openModal('replyModal');
+          }));
+        }
+        pagination.classList.add('pagination');
+        paginateUi({ container: pagination, total: data.total, page, perPage, onChange: (p: number) => { page = p; loadInbox(); } });
+      } catch(_) {}
+    }
+
+    document.getElementById('markAllRead')!.addEventListener('click', async () => {
+      try { await api('/api/inbox', { method: 'POST', body: { action: 'markAllRead' } }); toast('All marked read', 'success'); loadInbox(); } catch(_) {}
+    });
+
+    (document.getElementById('replyForm') as HTMLFormElement).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const body = Object.fromEntries(new FormData(f).entries());
+      (body as any).action = 'reply';
+      try {
+        await api('/api/inbox', { method: 'POST', body });
+        toast('Reply sent', 'success'); closeModal('replyModal'); f.reset();
+      } catch(_) {}
+    });
+
+    searchInput.addEventListener('input', () => { page = 1; loadInbox(); });
+    unreadOnly.addEventListener('change', () => { page = 1; loadInbox(); });
+    loadInbox();
+    setInterval(loadInbox, 15000);
+  </script>
+</Layout>

@@ -1,0 +1,569 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCampaign, renderTemplate, getCampaignAnalytics } from '../../services/campaigns';
+import { listContactLists } from '../../services/contacts';
+import { listTemplates } from '../../services/templates';
+
+const idStr = Astro.params.id;
+const isNew = idStr === 'new';
+let id: string | null = null;
+if (!isNew) id = idStr || null;
+
+const lists = await listContactLists();
+const templates = await listTemplates();
+const campaign = isNew ? null : await getCampaign(id!);
+const analytics = id ? await getCampaignAnalytics(id || '') : null;
+const sampleContact = {
+  id: '0', phone: '+1234567890', name: 'John Doe', company: 'Acme Inc',
+  city: 'New York', email: 'john@example.com', custom_fields: '{}',
+  opted_out: 0, created_at: Date.now(), updated_at: Date.now()
+};
+const initialBody = campaign?.message_body || '';
+const previewed = renderTemplate(initialBody, sampleContact as any);
+---
+
+<Layout>
+  <Fragment slot="title">{isNew ? 'New Campaign' : campaign?.name || 'Campaign'}</Fragment>
+
+  <div class="breadcrumbs">
+    <a href="/">Dashboard</a> / <a href="/campaigns">Campaigns</a> / <span>{isNew ? 'New' : campaign?.name || '-'}</span>
+  </div>
+
+  {isNew || (campaign && (campaign.status === 'draft' || campaign.status === 'paused')) ? (
+    <div>
+      <div class="wizard-steps">
+        <div class="wizard-step active" data-step="1"><div class="wizard-step-number">1</div> Contacts & List</div>
+        <div class="wizard-step" data-step="2"><div class="wizard-step-number">2</div> Message</div>
+        <div class="wizard-step" data-step="3"><div class="wizard-step-number">3</div> Media & Options</div>
+        <div class="wizard-step" data-step="4"><div class="wizard-step-number">4</div> Review & Send</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;" class="stat-grid">
+        <div>
+          <div class="card" data-step-panel="1">
+            <div class="card-header"><div class="card-title">Step 1: Contacts</div></div>
+            <div class="form-group">
+              <label>Campaign Name *</label>
+              <input type="text" id="campaignName" value={campaign?.name || ''} placeholder="e.g. Summer Sale 2024" />
+            </div>
+            <div class="form-group">
+              <label>Contact List *</label>
+              <select id="listSelect">
+                <option value="">Select a list...</option>
+                {lists.map(l => (
+                  <option value={l.id} selected={campaign?.contact_list_id === l.id}>
+                    {l.name} ({l.contact_count} contacts)
+                  </option>
+                ))}
+              </select>
+              <div class="form-hint">Contacts who have opted out will be skipped automatically.</div>
+              <div style="margin-top:8px;">
+                <a href="/import" class="btn btn-sm btn-secondary">📥 Import Contacts</a>
+                <a href="/contacts" class="btn btn-sm btn-secondary">👥 Manage Lists</a>
+              </div>
+            </div>
+            <div id="listInfo" style="display:none;padding:12px;background:var(--bg-tertiary);border-radius:var(--radius);margin-top:12px;"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+              <button class="btn btn-primary" data-next="2">Next: Compose Message →</button>
+            </div>
+          </div>
+
+          <div class="card" data-step-panel="2" style="display:none;">
+            <div class="card-header"><div class="card-title">Step 2: Compose Message</div></div>
+
+            <div class="form-group">
+              <label>Use Approved WhatsApp Template?</label>
+              <select id="useTemplateSelect">
+                <option value="no">No — compose custom message</option>
+                {templates.map(t => (
+                  <option value={t.id} selected={campaign?.template_id === t.id}>
+                    Template: {t.name} ({t.language})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div class="form-group" id="bodyGroup">
+              <label>Message Body *</label>
+              <textarea id="messageBody" rows="8" placeholder={`Hello {'{{name}}'}! We are writing to you from {'{{company}}'} about...`}>{initialBody}</textarea>
+              <div class="form-hint">
+                <strong>Variables:</strong> <code>{'{{name}}'}</code>, <code>{'{{company}}'}</code>, <code>{'{{city}}'}</code>, <code>{'{{email}}'}</code>, <code>{'{{phone}}'}</code> and any custom columns from your import
+              </div>
+            </div>
+
+            <div style="margin-top:8px;">
+              <div class="chip">{'{{name}}'}</div>
+              <div class="chip">{'{{company}}'}</div>
+              <div class="chip">{'{{city}}'}</div>
+              <div class="chip">{'{{email}}'}</div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;margin-top:20px;">
+              <button class="btn btn-secondary" data-prev="1">← Back</button>
+              <button class="btn btn-primary" data-next="3">Next: Media & Options →</button>
+            </div>
+          </div>
+
+          <div class="card" data-step-panel="3" style="display:none;">
+            <div class="card-header"><div class="card-title">Step 3: Media & Sending Options</div></div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Media URL (Image / Video / PDF)</label>
+                <input type="url" id="mediaUrl" value={campaign?.media_url || ''} placeholder="https://example.com/image.jpg" />
+                <div class="form-hint">Optional. Must be publicly accessible HTTPS URL. Supports JPG, PNG, MP4, PDF.</div>
+              </div>
+              <div class="form-group">
+                <label>Media Type</label>
+                <select id="mediaType">
+                  <option value="">Auto-detect</option>
+                  <option value="image/jpeg" selected={campaign?.media_type === 'image/jpeg'}>Image (JPG)</option>
+                  <option value="image/png" selected={campaign?.media_type === 'image/png'}>Image (PNG)</option>
+                  <option value="video/mp4" selected={campaign?.media_type === 'video/mp4'}>Video (MP4)</option>
+                  <option value="application/pdf" selected={campaign?.media_type === 'application/pdf'}>PDF</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Minimum send delay (ms)</label>
+                <input type="number" id="delayMin" min="100" step="100" value={campaign?.send_delay_min ?? 1000} />
+                <div class="form-hint">Avoid getting rate-limited or banned.</div>
+              </div>
+              <div class="form-group">
+                <label>Maximum send delay (ms)</label>
+                <input type="number" id="delayMax" min="200" step="100" value={campaign?.send_delay_max ?? 3000} />
+              </div>
+              <div class="form-group">
+                <label>Max retries per message</label>
+                <input type="number" id="maxRetries" min="0" max="10" value={campaign?.max_retries ?? 3} />
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;margin-top:20px;">
+              <button class="btn btn-secondary" data-prev="2">← Back</button>
+              <button class="btn btn-primary" data-next="4">Next: Review →</button>
+            </div>
+          </div>
+
+          <div class="card" data-step-panel="4" style="display:none;">
+            <div class="card-header"><div class="card-title">Step 4: Review & Send</div></div>
+            <div id="reviewPanel"></div>
+            <div style="display:flex;justify-content:space-between;margin-top:20px;">
+              <button class="btn btn-secondary" data-prev="3">← Back</button>
+              <div style="display:flex;gap:10px;">
+                <button class="btn btn-secondary" id="saveDraftBtn">💾 Save Draft</button>
+                <button class="btn btn-success" id="sendBtn">🚀 Send Campaign</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="position:sticky;top:90px;">
+            <div class="card-header"><div class="card-title">Live Preview</div></div>
+            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+              <div class="whatsapp-preview">
+                <div class="whatsapp-preview-header">
+                  <div class="whatsapp-preview-avatar">J</div>
+                  <div>
+                    <div class="whatsapp-preview-name" id="previewContactName">John Doe</div>
+                    <div style="font-size:11px;opacity:0.8;">tap for more info</div>
+                  </div>
+                </div>
+                <div class="whatsapp-preview-body">
+                  <div class="whatsapp-bubble" id="previewBubble">
+                    {previewed || 'Your message will appear here...'}
+                    <div id="previewMedia" style="display:none;margin-bottom:6px;"></div>
+                    <div class="whatsapp-bubble-time">
+                      <span id="previewTime">{new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
+                      <span style="margin-left:4px;">✓✓</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:16px;">
+              <label>Preview with sample data:</label>
+              <div class="form-grid" style="gap:8px;margin-top:8px;">
+                <input type="text" id="sampleName" placeholder="Name" value="John Doe" />
+                <input type="text" id="sampleCompany" placeholder="Company" value="Acme Inc" />
+                <input type="text" id="sampleCity" placeholder="City" value="New York" />
+                <input type="text" id="sampleEmail" placeholder="Email" value="john@example.com" />
+              </div>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+              Variables found: <span id="varsList" style="font-family:monospace;">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div>
+      {campaign ? (
+        <div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px;" class="stat-grid">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <h2 style="font-size:20px;font-weight:700;">{campaign.name}</h2>
+                    <span class="badge badge-primary" id="campaignStatus">—</span>
+                  </div>
+                  <div style="color:var(--text-muted);font-size:13px;margin-top:4px;">
+                    List: {campaign.list_name || '-'} · Created {new Date(campaign.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;" id="actionButtons"></div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;">
+                <div class="stat-card" style="padding:16px;"><div class="stat-label">Total</div><div class="stat-value" id="sTotal" style="font-size:22px;">0</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-label" style="color:var(--info);">Queued</div><div class="stat-value" id="sQueued" style="font-size:22px;">0</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-label" style="color:var(--accent);">Sent</div><div class="stat-value" id="sSent" style="font-size:22px;">0</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-label" style="color:var(--success);">Delivered</div><div class="stat-value" id="sDelivered" style="font-size:22px;">0</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-label" style="color:var(--info);">Read</div><div class="stat-value" id="sRead" style="font-size:22px;">0</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-label" style="color:var(--danger);">Failed</div><div class="stat-value" id="sFailed" style="font-size:22px;">0</div></div>
+              </div>
+
+              {analytics && (
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+                  <div class="card" style="padding:16px;background:var(--success-light);">
+                    <div style="font-size:12px;color:var(--success);text-transform:uppercase;letter-spacing:0.05em;">Delivery Rate</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--success);">{analytics.deliveryRate}%</div>
+                  </div>
+                  <div class="card" style="padding:16px;background:var(--info-light);">
+                    <div style="font-size:12px;color:var(--info);text-transform:uppercase;letter-spacing:0.05em;">Read Rate</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--info);">{analytics.readRate}%</div>
+                  </div>
+                  <div class="card" style="padding:16px;background:var(--danger-light);">
+                    <div style="font-size:12px;color:var(--danger);text-transform:uppercase;letter-spacing:0.05em;">Failure Rate</div>
+                    <div style="font-size:24px;font-weight:700;color:var(--danger);">{analytics.failureRate}%</div>
+                  </div>
+                </div>
+              )}
+
+              <div class="card-header" style="padding:0;margin-bottom:16px;"><div class="card-title" style="font-size:16px;">Message</div></div>
+              <div style="padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);white-space:pre-wrap;font-size:14px;">{campaign.message_body}</div>
+              {campaign.media_url ? <div style="margin-top:12px;font-size:13px;">📎 Media: <a href={campaign.media_url} target="_blank" rel="noopener">{campaign.media_url}</a></div> : null}
+            </div>
+
+            <div class="card">
+              <div class="card-header"><div class="card-title">Messages Log</div>
+                <select id="msgStatusFilter" style="max-width:180px;">
+                  <option value="">All statuses</option>
+                  <option value="queued">Queued</option>
+                  <option value="sent">Sent</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="read">Read</option>
+                  <option value="failed">Failed</option>
+                  <option value="undelivered">Undelivered</option>
+                </select>
+              </div>
+              <div class="table-wrapper">
+                <table>
+                  <thead><tr><th>#</th><th>Phone</th><th>Status</th><th>SID</th><th>Body Preview</th><th>Error</th><th>Timestamps</th></tr></thead>
+                  <tbody id="msgTbody"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                </table>
+              </div>
+              <div class="pagination" id="msgPagination"></div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div class="card"><div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-title">Campaign not found</div><a href="/campaigns" class="btn btn-primary">Back to campaigns</a></div></div>
+      )}
+    </div>
+  )}
+
+  <script id="campaignData" type="application/json" is:inline set:html={JSON.stringify({ isNew, id: id || null, templates, lists })}></script>
+
+  <script>
+    import { api, toast, escapeHtml, formatDate, statusMeta, formatNumber, paginateUi } from '../../scripts/app.js';
+
+    const dataEl = document.getElementById('campaignData');
+    const { isNew, id, templates = [], lists = [] } = dataEl ? JSON.parse(dataEl.textContent || '{}') : {};
+
+    if (!isNew && id) {
+      let msgPage = 1;
+      const msgPerPage = 20;
+      async function loadDetail() {
+        try {
+          const c = await api(`/api/campaigns/${id}`);
+          const s = document.getElementById('campaignStatus');
+          const meta = statusMeta(c.status);
+          if (s) { s.textContent = meta.label; s.className = `badge ${meta.cls}`; }
+
+          const sTotal = document.getElementById('sTotal');
+          if (sTotal) sTotal.textContent = formatNumber(c.total_contacts);
+          const sQueued = document.getElementById('sQueued');
+          if (sQueued) sQueued.textContent = formatNumber(c.queued_count);
+          const sSent = document.getElementById('sSent');
+          if (sSent) sSent.textContent = formatNumber(c.sent_count);
+          const sDelivered = document.getElementById('sDelivered');
+          if (sDelivered) sDelivered.textContent = formatNumber(c.delivered_count);
+          const sRead = document.getElementById('sRead');
+          if (sRead) sRead.textContent = formatNumber(c.read_count);
+          const sFailed = document.getElementById('sFailed');
+          if (sFailed) sFailed.textContent = formatNumber(c.failed_count + c.undelivered_count);
+
+          const actions = document.getElementById('actionButtons');
+          if (actions) {
+            let buttons = '';
+            if (c.status === 'draft') buttons += `<button class="btn btn-success btn-sm" data-act="start">🚀 Send</button>`;
+            if (c.status === 'queued') buttons += `<button class="btn btn-success btn-sm" data-act="start">▶️ Start</button>`;
+            if (c.status === 'sending') { buttons += `<button class="btn btn-warning btn-sm" data-act="pause">⏸ Pause</button>`; buttons += `<button class="btn btn-danger btn-sm" data-act="cancel">⏹ Cancel</button>`; }
+            if (c.status === 'paused') { buttons += `<button class="btn btn-success btn-sm" data-act="resume">▶️ Resume</button>`; buttons += `<button class="btn btn-danger btn-sm" data-act="cancel">⏹ Cancel</button>`; }
+            actions.innerHTML = buttons;
+            actions.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+              const act = b.getAttribute('data-act');
+              if (act) control(act);
+            }));
+          }
+        } catch(_) {}
+      }
+      async function control(action: string) {
+        try { await api(`/api/campaigns/${id}/control`, { method: 'POST', body: { action } }); toast(`Campaign ${action}ed`, 'success'); setTimeout(() => { location.reload(); }, 800); } catch(_) {}
+      }
+      async function loadMessages() {
+        try {
+          const filterEl = document.getElementById('msgStatusFilter') as HTMLSelectElement | null;
+          const filter = filterEl ? filterEl.value : '';
+          const data = await api(`/api/campaigns/${id}/messages?page=${msgPage}&perPage=${msgPerPage}${filter ? `&status=${filter}` : ''}`);
+          const tbody = document.getElementById('msgTbody');
+          if (tbody) {
+            if (!data.messages.length) {
+              tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">No messages yet</td></tr>`;
+            } else {
+              tbody.innerHTML = data.messages.map((m: any, i: number) => {
+                const meta = statusMeta(m.status);
+                const times = [
+                  m.sent_at ? `Sent:${formatDate(m.sent_at).split(',')[1]}` : null,
+                  m.delivered_at ? `Delv:${formatDate(m.delivered_at).split(',')[1]}` : null,
+                  m.read_at ? `Read:${formatDate(m.read_at).split(',')[1]}` : null,
+                  m.failed_at ? `Failed:${formatDate(m.failed_at).split(',')[1]}` : null
+                ].filter(Boolean).join(' · ');
+                return `<tr>
+                  <td>${(msgPage - 1) * msgPerPage + i + 1}</td>
+                  <td style="font-family:monospace;font-size:12px;">${escapeHtml(m.phone)}</td>
+                  <td><span class="badge ${meta.cls}">${meta.label}</span></td>
+                  <td style="font-family:monospace;font-size:11px;color:var(--text-muted);">${m.sid ? escapeHtml(m.sid.slice(0, 16) + '…') : '-'}</td>
+                  <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml((m.body || '').slice(0, 80))}</td>
+                  <td style="max-width:180px;color:var(--danger);font-size:12px;">${m.error_message ? escapeHtml(m.error_code + ': ' + m.error_message).slice(0, 60) : '-'}</td>
+                  <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${times || '-'}</td>
+                </tr>`;
+              }).join('');
+            }
+          }
+          const pag = document.getElementById('msgPagination');
+          if (pag) {
+            pag.classList.add('pagination');
+            paginateUi({ container: pag, total: data.total, page: msgPage, perPage: msgPerPage, onChange: (p: number) => { msgPage = p; loadMessages(); } });
+          }
+        } catch(_) {}
+      }
+      loadDetail(); setInterval(loadDetail, 5000); loadMessages();
+      document.getElementById('msgStatusFilter')?.addEventListener('change', () => { msgPage = 1; loadMessages(); });
+    }
+
+    // === Wizard logic for new/edit ===
+    const stepPanel1 = document.querySelector<HTMLElement>('[data-step-panel="1"]');
+    if (isNew || (id && stepPanel1 && stepPanel1.style.display !== 'none')) {
+      const setStep = (n: number) => {
+        document.querySelectorAll('.wizard-step').forEach(s => {
+          const dataStep = s.getAttribute('data-step');
+          const num = dataStep ? parseInt(dataStep, 10) : 0;
+          s.classList.toggle('active', num === n);
+          s.classList.toggle('complete', num < n);
+        });
+        document.querySelectorAll('[data-step-panel]').forEach((p) => {
+          const el = p as HTMLElement;
+          const dataPanel = el.getAttribute('data-step-panel');
+          const panelNum = dataPanel ? parseInt(dataPanel, 10) : 0;
+          el.style.display = panelNum === n ? '' : 'none';
+        });
+      };
+      document.querySelectorAll('[data-next]').forEach(b => {
+        b.addEventListener('click', () => {
+          const dn = b.getAttribute('data-next');
+          if (dn) setStep(parseInt(dn, 10));
+        });
+      });
+      document.querySelectorAll('[data-prev]').forEach(b => {
+        b.addEventListener('click', () => {
+          const dp = b.getAttribute('data-prev');
+          if (dp) setStep(parseInt(dp, 10));
+        });
+      });
+
+      const $ = <T extends HTMLElement = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel);
+      const listSelect = $<HTMLSelectElement>('#listSelect');
+      const listInfo = $<HTMLElement>('#listInfo');
+
+      async function refreshListInfo() {
+        if (!listSelect || !listInfo) return;
+        if (!listSelect.value) { listInfo.style.display = 'none'; return; }
+        try {
+          const r = await api(`/api/contact-lists/${listSelect.value}`);
+          listInfo.style.display = 'block';
+          listInfo.innerHTML = `<strong style="font-size:20px;">${formatNumber(r.count || 0)}</strong> active contacts in this list (opted-outs excluded). Will send to ${r.count || 0} recipients.`;
+        } catch(_) { listInfo.style.display = 'none'; }
+      }
+      if (listSelect) {
+        listSelect.addEventListener('change', refreshListInfo);
+        if (listSelect.value) refreshListInfo();
+      }
+
+      async function updatePreview() {
+        const bodyEl = $<HTMLTextAreaElement>('#messageBody');
+        const body = bodyEl ? bodyEl.value : '';
+        try {
+          const sampleName = $<HTMLInputElement>('#sampleName');
+          const sampleCompany = $<HTMLInputElement>('#sampleCompany');
+          const sampleCity = $<HTMLInputElement>('#sampleCity');
+          const sampleEmail = $<HTMLInputElement>('#sampleEmail');
+          const mediaUrlEl = $<HTMLInputElement>('#mediaUrl');
+          const mediaTypeEl = $<HTMLSelectElement>('#mediaType');
+          const data = await api('/api/campaigns/preview', {
+            method: 'POST',
+            body: {
+              messageBody: body,
+              name: sampleName ? sampleName.value : '',
+              company: sampleCompany ? sampleCompany.value : '',
+              city: sampleCity ? sampleCity.value : '',
+              email: sampleEmail ? sampleEmail.value : '',
+            }
+          });
+          const previewBubble = $('#previewBubble');
+          if (previewBubble && previewBubble.childNodes[0]) {
+            previewBubble.childNodes[0].nodeValue = (data.preview || 'Your message will appear here...') + '\n';
+          }
+          const varsList = $('#varsList');
+          if (varsList) {
+            varsList.textContent = data.variables && data.variables.length ? `{{${data.variables.join('}}, {{')}}` : 'none';
+          }
+          const previewContactName = $('#previewContactName');
+          if (previewContactName) {
+            previewContactName.textContent = (sampleName ? sampleName.value : '') || 'John Doe';
+          }
+          const mediaUrl = mediaUrlEl ? mediaUrlEl.value : '';
+          const mediaDiv = $('#previewMedia');
+          if (mediaDiv) {
+            if (mediaUrl) {
+              mediaDiv.style.display = 'block';
+              const mt = mediaTypeEl ? mediaTypeEl.value : '';
+              if (mt.startsWith('video') || mediaUrl.endsWith('.mp4')) {
+                mediaDiv.innerHTML = `<video class="whatsapp-bubble-media" controls src="${mediaUrl}"></video>`;
+              } else if (mt === 'application/pdf' || mediaUrl.endsWith('.pdf')) {
+                mediaDiv.innerHTML = `<div class="whatsapp-bubble-media" style="padding:10px;background:rgba(255,255,255,0.3);border-radius:6px;">📄 PDF attachment</div>`;
+              } else {
+                mediaDiv.innerHTML = `<img class="whatsapp-bubble-media" src="${mediaUrl}" alt="media" onerror="this.style.display='none'" />`;
+              }
+            } else { mediaDiv.style.display = 'none'; mediaDiv.innerHTML = ''; }
+          }
+        } catch(_) {}
+      }
+      ['#messageBody', '#sampleName', '#sampleCompany', '#sampleCity', '#sampleEmail', '#mediaUrl', '#mediaType'].forEach(sel => {
+        const el = $(sel); el?.addEventListener('input', updatePreview); el?.addEventListener('change', updatePreview);
+      });
+      updatePreview();
+
+      const useTemplateSel = $<HTMLSelectElement>('#useTemplateSelect');
+      const templatesDefs = templates;
+      useTemplateSel?.addEventListener('change', () => {
+        const v = useTemplateSel.value;
+        if (v && v !== 'no') {
+          const t = templatesDefs.find((x: any) => x.id === v);
+          const mb = $<HTMLTextAreaElement>('#messageBody');
+          if (t && t.body && mb) {
+            mb.value = t.body;
+            if (t.media_url) {
+              const mu = $<HTMLInputElement>('#mediaUrl');
+              if (mu) mu.value = t.media_url;
+            }
+            if (t.media_type) {
+              const mt = $<HTMLSelectElement>('#mediaType');
+              if (mt) mt.value = t.media_type;
+            }
+            updatePreview();
+          }
+        }
+      });
+
+      function collectPayload() {
+        const cn = $<HTMLInputElement>('#campaignName');
+        const dl = $<HTMLInputElement>('#delayMin');
+        const dm = $<HTMLInputElement>('#delayMax');
+        const mr = $<HTMLInputElement>('#maxRetries');
+        const mbd = $<HTMLTextAreaElement>('#messageBody');
+        const mu = $<HTMLInputElement>('#mediaUrl');
+        const mty = $<HTMLSelectElement>('#mediaType');
+        return {
+          name: cn ? cn.value.trim() : '',
+          contactListId: listSelect && listSelect.value ? listSelect.value : undefined,
+          templateId: useTemplateSel && useTemplateSel.value !== 'no' ? useTemplateSel.value : undefined,
+          useTemplate: useTemplateSel ? useTemplateSel.value !== 'no' : false,
+          messageBody: mbd ? mbd.value : '',
+          mediaUrl: mu && mu.value ? mu.value : undefined,
+          mediaType: mty && mty.value ? mty.value : undefined,
+          sendDelayMin: dl && dl.value ? (parseInt(dl.value, 10) || 1000) : 1000,
+          sendDelayMax: dm && dm.value ? (parseInt(dm.value, 10) || 3000) : 3000,
+          maxRetries: mr && mr.value ? (parseInt(mr.value, 10) || 3) : 3,
+        };
+      }
+
+      async function renderReview() {
+        const payload = collectPayload();
+        const list = lists.find((x: any) => x.id === payload.contactListId);
+        const panel = $('#reviewPanel');
+        if (panel) {
+          panel.innerHTML = `
+            <div style="padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;">
+                <div><strong>Campaign Name:</strong> ${escapeHtml(payload.name || '(not set)')}</div>
+                <div><strong>Contact List:</strong> ${list ? escapeHtml(list.name + ' (' + list.contact_count + ' contacts)') : '(not selected)'}</div>
+                <div><strong>Media:</strong> ${payload.mediaUrl ? escapeHtml(payload.mediaUrl) : 'None'}</div>
+                <div><strong>Send Delay:</strong> ${payload.sendDelayMin}–${payload.sendDelayMax} ms · Retries: ${payload.maxRetries}</div>
+              </div>
+              <div style="margin-top:16px;"><strong>Message:</strong>
+                <div style="margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:6px;white-space:pre-wrap;">${escapeHtml(payload.messageBody || '(empty)')}</div>
+              </div>
+            </div>`;
+        }
+      }
+      document.querySelectorAll('[data-next], [data-prev]').forEach(b => {
+        const dn = b.getAttribute('data-next');
+        const dp = b.getAttribute('data-prev');
+        if (dn === '4' || dp === '3') {
+          b.addEventListener('click', () => setTimeout(renderReview, 0));
+        }
+      });
+
+      async function saveOrSend(start: boolean) {
+        const payload = collectPayload();
+        if (!payload.name) { toast('Campaign name required', 'error'); setStep(1); return; }
+        if (!payload.contactListId) { toast('Please select a contact list', 'error'); setStep(1); return; }
+        if (!payload.messageBody) { toast('Please write a message', 'error'); setStep(2); return; }
+        try {
+          let c;
+          if (isNew) {
+            c = await api('/api/campaigns', { method: 'POST', body: payload });
+          } else {
+            c = await api(`/api/campaigns/${id}`, { method: 'PUT', body: payload });
+          }
+          toast(start ? 'Campaign starting...' : 'Draft saved', 'success');
+          if (start && c && c.id) {
+            await api(`/api/campaigns/${c.id}/control`, { method: 'POST', body: { action: 'start' } });
+          }
+          setTimeout(() => { location.href = c && c.id ? `/campaigns/${c.id}` : '/campaigns'; }, 600);
+        } catch(_) {}
+      }
+      $('#saveDraftBtn')?.addEventListener('click', () => saveOrSend(false));
+      $('#sendBtn')?.addEventListener('click', () => {
+        if (confirm('Launch this campaign now? This cannot be undone.')) saveOrSend(true);
+      });
+    }
+  </script>
+</Layout>

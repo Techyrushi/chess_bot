@@ -1,0 +1,348 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { listTemplates } from '../services/templates';
+import { statusMeta } from '../scripts/app.js';
+
+const initialTemplates = await listTemplates();
+---
+
+<Layout>
+  <Fragment slot="title">Message Templates</Fragment>
+
+  <div class="breadcrumbs"><a href="/">Dashboard</a> / <span>Templates</span></div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Approved WhatsApp Templates</div>
+      <button class="btn btn-primary btn-sm" data-modal-open="newTemplateModal">+ New Template</button>
+    </div>
+
+    <div id="templatesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+      {initialTemplates.length === 0 ? (
+        <div style="grid-column:1/-1;">
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div class="empty-state-title">No templates yet</div>
+            <div class="empty-state-subtitle">Create reusable message templates for your campaigns</div>
+          </div>
+        </div>
+      ) : (
+        initialTemplates.map(t => {
+          const vars = t.variables ? JSON.parse(t.variables) : null;
+          const meta = statusMeta(t.status);
+          return (
+            <div class="card" style="padding:18px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                <div>
+                  <div style="font-weight:600;font-size:15px;">{t.name}</div>
+                  <div style="display:flex;gap:6px;margin-top:4px;">
+                    <span class="chip">{t.language || 'en'}</span>
+                    {t.category && <span class="chip">{t.category}</span>}
+                    {t.status && <span class={`badge ${meta.cls}`}>{meta.label}</span>}
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;">
+                  <button class="btn btn-sm btn-secondary btn-edit" data-id={t.id}>✏️</button>
+                  <button class="btn btn-sm btn-danger btn-delete" data-id={t.id}>🗑</button>
+                </div>
+              </div>
+              <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;white-space:pre-wrap;font-size:13px;">{t.body}</div>
+              {t.media_url && (
+                <div style="margin-top:8px;font-size:12px;color:var(--text-muted);word-break:break-all;">
+                  📎 Media: <a href={t.media_url} target="_blank" rel="noopener">{t.media_url}</a> {t.media_type ? `(${t.media_type})` : ''}
+                </div>
+              )}
+              {vars && vars.length > 0 && (
+                <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">
+                  Variables: <code>{vars.join(', ')}</code>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="newTemplateModal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Create Message Template</div><button class="modal-close" data-modal-close>✕</button></div>
+      <form id="newTemplateForm">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group"><label>Template Name *</label><input name="name" required placeholder="welcome_message" /></div>
+            <div class="form-group"><label>Twilio SID (optional)</label><input name="sid" placeholder="HX..." /></div>
+            <div class="form-group"><label>Media URL (optional)</label><input id="templateMediaUrl" name="mediaUrl" type="url" placeholder="https://example.com/image.jpg" /></div>
+            <div class="form-group">
+              <label>Upload Media File (optional)</label>
+              <input type="file" id="templateMediaFile" accept="image/*,video/mp4,application/pdf" style="margin-top: 4px;" />
+              <div id="uploadStatusHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Upload JPG, PNG, MP4, PDF</div>
+            </div>
+            <div class="form-group"><label>Media Type</label>
+              <select id="templateMediaType" name="mediaType">
+                <option value="">Auto-detect</option>
+                <option value="image/jpeg">Image (JPG)</option>
+                <option value="image/png">Image (PNG)</option>
+                <option value="video/mp4">Video (MP4)</option>
+                <option value="application/pdf">PDF</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Language</label>
+              <select name="language">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Category</label>
+              <select name="category">
+                <option value="marketing">Marketing</option>
+                <option value="utility">Utility</option>
+                <option value="authentication">Authentication</option>
+                <option value="service">Service</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Body *</label>
+            <textarea name="body" rows="6" placeholder={`Hello {'{{1}}'}, thank you for your interest in {'{{2}}'}...`} required></textarea>
+            <div class="form-hint">Use {'{{1}}'}, {'{{2}}'} for template variables, or {'{{name}}'}, {'{{company}}'} etc.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Template</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editTemplateModal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Edit Message Template</div><button class="modal-close" data-modal-close>✕</button></div>
+      <form id="editTemplateForm">
+        <input type="hidden" name="id" />
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group"><label>Template Name *</label><input name="name" required placeholder="welcome_message" /></div>
+            <div class="form-group"><label>Twilio SID (optional)</label><input name="sid" placeholder="HX..." /></div>
+            <div class="form-group"><label>Media URL (optional)</label><input id="editTemplateMediaUrl" name="mediaUrl" type="url" placeholder="https://example.com/image.jpg" /></div>
+            <div class="form-group">
+              <label>Upload Media File (optional)</label>
+              <input type="file" id="editTemplateMediaFile" accept="image/*,video/mp4,application/pdf" style="margin-top: 4px;" />
+              <div id="editUploadStatusHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Upload JPG, PNG, MP4, PDF</div>
+            </div>
+            <div class="form-group"><label>Media Type</label>
+              <select id="editTemplateMediaType" name="mediaType">
+                <option value="">Auto-detect</option>
+                <option value="image/jpeg">Image (JPG)</option>
+                <option value="image/png">Image (PNG)</option>
+                <option value="video/mp4">Video (MP4)</option>
+                <option value="application/pdf">PDF</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Language</label>
+              <select name="language">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Category</label>
+              <select name="category">
+                <option value="marketing">Marketing</option>
+                <option value="utility">Utility</option>
+                <option value="authentication">Authentication</option>
+                <option value="service">Service</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Body *</label>
+            <textarea name="body" rows="6" required></textarea>
+            <div class="form-hint">Use {'{{1}}'}, {'{{2}}'} for template variables, or {'{{name}}'}, {'{{company}}'} etc.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    import { api, toast, escapeHtml, setupModals, closeModal, openModal, statusMeta } from '../scripts/app.js';
+    setupModals();
+    const grid = document.getElementById('templatesGrid')!;
+
+    async function loadTemplates() {
+      try {
+        const list = await api('/api/templates');
+        if (!list.length) {
+          grid.innerHTML = `<div style="grid-column:1/-1;"><div class="empty-state"><div class="empty-state-icon">📝</div><div class="empty-state-title">No templates yet</div><div class="empty-state-subtitle">Create reusable message templates for your campaigns</div></div></div>`;
+          return;
+        }
+        grid.innerHTML = list.map((t: any) => {
+          const vars = t.variables ? JSON.parse(t.variables) : null;
+          return `<div class="card" style="padding:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+              <div>
+                <div style="font-weight:600;font-size:15px;">${escapeHtml(t.name)}</div>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                  <span class="chip">${escapeHtml(t.language || 'en')}</span>
+                  ${t.category ? `<span class="chip">${escapeHtml(t.category)}</span>` : ''}
+                  ${t.status ? `<span class="badge ${statusMeta(t.status).cls}">${statusMeta(t.status).label}</span>` : ''}
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-sm btn-secondary btn-edit" data-id="${t.id}">✏️</button>
+                <button class="btn btn-sm btn-danger btn-delete" data-id="${t.id}">🗑</button>
+              </div>
+            </div>
+            <div style="padding:12px;background:var(--bg-tertiary);border-radius:6px;white-space:pre-wrap;font-size:13px;">${escapeHtml(t.body)}</div>
+            ${t.media_url ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);word-break:break-all;">📎 Media: <a href="${escapeHtml(t.media_url)}" target="_blank" rel="noopener">${escapeHtml(t.media_url)}</a> ${t.media_type ? `(${escapeHtml(t.media_type)})` : ''}</div>` : ''}
+            ${vars?.length ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Variables: <code>${escapeHtml(vars.join(', '))}</code></div>` : ''}
+          </div>`;
+        }).join('');
+        grid.querySelectorAll('.btn-edit').forEach(b => b.addEventListener('click', async () => {
+          const id = (b as any).dataset.id;
+          try {
+            const t = await api(`/api/templates/${id}`);
+            const f = document.getElementById('editTemplateForm') as HTMLFormElement;
+            const idInp = f.querySelector<HTMLInputElement>('[name="id"]');
+            const nameInp = f.querySelector<HTMLInputElement>('[name="name"]');
+            const sidInp = f.querySelector<HTMLInputElement>('[name="sid"]');
+            const mediaInp = f.querySelector<HTMLInputElement>('[name="mediaUrl"]');
+            const mediaTypeInp = f.querySelector<HTMLSelectElement>('[name="mediaType"]');
+            const langInp = f.querySelector<HTMLSelectElement>('[name="language"]');
+            const catInp = f.querySelector<HTMLSelectElement>('[name="category"]');
+            const bodyInp = f.querySelector<HTMLTextAreaElement>('[name="body"]');
+            if (idInp) idInp.value = t.id;
+            if (nameInp) nameInp.value = t.name || '';
+            if (sidInp) sidInp.value = t.sid || '';
+            if (mediaInp) mediaInp.value = t.media_url || '';
+            if (mediaTypeInp) mediaTypeInp.value = t.media_type || '';
+            if (langInp) langInp.value = t.language || 'en';
+            if (catInp) catInp.value = t.category || 'marketing';
+            if (bodyInp) bodyInp.value = t.body || '';
+            openModal('editTemplateModal');
+          } catch(_) {}
+        }));
+        grid.querySelectorAll('.btn-delete').forEach(b => b.addEventListener('click', async () => {
+          if (!confirm('Delete this template?')) return;
+          const id = (b as any).dataset.id;
+          try { await api(`/api/templates/${id}`, { method: 'DELETE' }); toast('Template deleted', 'success'); loadTemplates(); }
+          catch(_) {}
+        }));
+      } catch(_) {}
+    }
+
+    const mediaFileInput = document.getElementById('templateMediaFile') as HTMLInputElement;
+    const mediaUrlInput = document.getElementById('templateMediaUrl') as HTMLInputElement;
+    const mediaTypeSelect = document.getElementById('templateMediaType') as HTMLSelectElement;
+    const uploadStatusHint = document.getElementById('uploadStatusHint')!;
+
+    mediaFileInput?.addEventListener('change', async () => {
+      const file = mediaFileInput.files?.[0];
+      if (!file) return;
+
+      uploadStatusHint.textContent = 'Uploading file...';
+      uploadStatusHint.style.color = 'var(--info)';
+
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await api('/api/media/upload', {
+          method: 'POST',
+          body: fd
+        });
+
+        mediaUrlInput.value = res.url;
+        if (res.contentType) {
+          mediaTypeSelect.value = res.contentType;
+        }
+        uploadStatusHint.textContent = 'Upload successful!';
+        uploadStatusHint.style.color = 'var(--success)';
+      } catch (e: any) {
+        uploadStatusHint.textContent = 'Upload failed: ' + (e.message || 'Error');
+        uploadStatusHint.style.color = 'var(--danger)';
+      }
+    });
+
+    const editMediaFileInput = document.getElementById('editTemplateMediaFile') as HTMLInputElement;
+    const editMediaUrlInput = document.getElementById('editTemplateMediaUrl') as HTMLInputElement;
+    const editMediaTypeSelect = document.getElementById('editTemplateMediaType') as HTMLSelectElement;
+    const editUploadStatusHint = document.getElementById('editUploadStatusHint')!;
+
+    editMediaFileInput?.addEventListener('change', async () => {
+      const file = editMediaFileInput.files?.[0];
+      if (!file) return;
+
+      editUploadStatusHint.textContent = 'Uploading file...';
+      editUploadStatusHint.style.color = 'var(--info)';
+
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await api('/api/media/upload', {
+          method: 'POST',
+          body: fd
+        });
+
+        editMediaUrlInput.value = res.url;
+        if (res.contentType) {
+          editMediaTypeSelect.value = res.contentType;
+        }
+        editUploadStatusHint.textContent = 'Upload successful!';
+        editUploadStatusHint.style.color = 'var(--success)';
+      } catch (e: any) {
+        editUploadStatusHint.textContent = 'Upload failed: ' + (e.message || 'Error');
+        editUploadStatusHint.style.color = 'var(--danger)';
+      }
+    });
+
+    const newTplForm = document.getElementById('newTemplateForm') as HTMLFormElement;
+    newTplForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const target = e.target as HTMLFormElement;
+      const data = Object.fromEntries(new FormData(target).entries());
+      try {
+        await api('/api/templates', { method: 'POST', body: data });
+        toast('Template saved', 'success');
+        target.reset();
+        uploadStatusHint.textContent = 'Upload JPG, PNG, MP4, PDF';
+        uploadStatusHint.style.color = 'var(--text-muted)';
+        closeModal('newTemplateModal');
+        loadTemplates();
+      } catch(_) {}
+    });
+
+    const editTplForm = document.getElementById('editTemplateForm') as HTMLFormElement;
+    editTplForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const target = e.target as HTMLFormElement;
+      const idInp = target.querySelector<HTMLInputElement>('[name="id"]');
+      const id = idInp ? idInp.value : '';
+      const data = Object.fromEntries(new FormData(target).entries());
+      delete (data as any).id;
+      try {
+        await api(`/api/templates/${id}`, { method: 'PUT', body: data });
+        toast('Template updated', 'success');
+        target.reset();
+        closeModal('editTemplateModal');
+        loadTemplates();
+      } catch(_) {}
+    });
+
+    loadTemplates();
+  </script>
+</Layout>

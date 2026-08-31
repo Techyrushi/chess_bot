@@ -1,0 +1,288 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { listContacts, listContactLists } from '../services/contacts';
+
+const initialLists = await listContactLists();
+const initialData = await listContacts({ page: 1, perPage: 25 });
+const initialContacts = initialData.contacts || [];
+---
+
+<Layout>
+  <Fragment slot="title">Contacts</Fragment>
+
+  <div class="breadcrumbs"><a href="/">Dashboard</a> / <span>Contacts</span></div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <div class="card-title">Contacts</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" data-modal-open="newContactModal">+ New Contact</button>
+        <a href="/import" class="btn btn-primary btn-sm">📥 Import Contacts</a>
+      </div>
+    </div>
+
+    <div class="filters-row">
+      <div style="flex:1;min-width:240px;">
+        <div class="search-input"><input type="search" id="searchInput" placeholder="Search name, phone, company, city, email..." /></div>
+      </div>
+      <select id="optOutFilter" style="max-width:200px;">
+        <option value="">All contacts</option>
+        <option value="false">Active only</option>
+        <option value="true">Opted out</option>
+      </select>
+      <select id="listFilter" style="max-width:200px;">
+        <option value="">All lists</option>
+        {initialLists.map(l => (
+          <option value={l.id}>{l.name} ({l.contact_count})</option>
+        ))}
+      </select>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="checkAll" style="width:auto;" /></th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Company</th>
+            <th>City</th>
+            <th>Email</th>
+            <th>Lists</th>
+            <th>Status</th>
+            <th style="width:120px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="contactsTbody">
+          {initialContacts.length === 0 ? (
+            <tr>
+              <td colspan="9" style="text-align:center;padding:60px;">
+                <div class="empty-state">
+                  <div class="empty-state-icon">👥</div>
+                  <div class="empty-state-title">No contacts found</div>
+                  <div class="empty-state-subtitle">Try adjusting your search or filters, or import some contacts</div>
+                  <a href="/import" class="btn btn-primary">Import Contacts</a>
+                </div>
+              </td>
+            </tr>
+          ) : (
+            initialContacts.map(c => {
+              const opted = c.opted_out === 1;
+              return (
+                <tr data-id={c.id}>
+                  <td><input type="checkbox" class="row-check" style="width:auto;" data-id={c.id} /></td>
+                  <td><strong>{c.name || '-'}</strong></td>
+                  <td style="font-family:monospace;font-size:12px;">{c.phone}</td>
+                  <td>{c.company || '-'}</td>
+                  <td>{c.city || '-'}</td>
+                  <td>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '-'}</td>
+                  <td>
+                    {c.lists ? (
+                      c.lists.split(', ').map(x => <span class="chip">{x}</span>)
+                    ) : (
+                      <span style="color:var(--text-muted);">-</span>
+                    )}
+                  </td>
+                  <td>
+                    {opted ? (
+                      <span class="badge badge-danger">Opted Out</span>
+                    ) : (
+                      <span class="badge badge-success">Active</span>
+                    )}
+                  </td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="btn btn-sm btn-secondary btn-edit" data-id={c.id}>✏️</button>
+                      <button class="btn btn-sm btn-danger btn-delete" data-id={c.id}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <div class="modal-overlay" id="newContactModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">New Contact</div>
+        <button class="modal-close" data-modal-close>✕</button>
+      </div>
+      <form id="newContactForm">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group"><label>Phone *</label><input name="phone" required placeholder="+1234567890" /></div>
+            <div class="form-group"><label>Name</label><input name="name" placeholder="John Doe" /></div>
+            <div class="form-group"><label>Company</label><input name="company" placeholder="Acme Inc" /></div>
+            <div class="form-group"><label>City</label><input name="city" placeholder="New York" /></div>
+            <div class="form-group"><label>Email</label><input name="email" type="email" placeholder="john@example.com" /></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Contact</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editContactModal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Edit Contact</div><button class="modal-close" data-modal-close>✕</button></div>
+      <form id="editContactForm">
+        <input type="hidden" name="id" />
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group"><label>Phone *</label><input name="phone" required /></div>
+            <div class="form-group"><label>Name</label><input name="name" /></div>
+            <div class="form-group"><label>Company</label><input name="company" /></div>
+            <div class="form-group"><label>City</label><input name="city" /></div>
+            <div class="form-group"><label>Email</label><input name="email" type="email" /></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    import { api, toast, escapeHtml, setupModals, paginateUi, openModal, closeModal } from '../scripts/app.js';
+    setupModals();
+
+    const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+    const optOutFilter = document.getElementById('optOutFilter') as HTMLSelectElement;
+    const listFilter = document.getElementById('listFilter') as HTMLSelectElement;
+    const tbody = document.getElementById('contactsTbody')!;
+    const pagination = document.getElementById('pagination')!;
+    let page = 1; const perPage = 25;
+
+    let lists: any[] = [];
+
+    async function loadLists() {
+      try {
+        lists = await api('/api/contact-lists');
+        listFilter.innerHTML = '<option value="">All lists</option>' +
+          lists.map((l: any) => `<option value="${l.id}">${escapeHtml(l.name)} (${l.contact_count})</option>`).join('');
+      } catch(_) {}
+    }
+
+    async function loadContacts() {
+      try {
+        const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+        if (searchInput.value.trim()) params.append('search', searchInput.value.trim());
+        if (optOutFilter.value) params.append('optedOut', optOutFilter.value);
+        if (listFilter.value) params.append('listId', listFilter.value);
+
+        const data = await api('/api/contacts?' + params.toString());
+        if (!data.contacts.length) {
+          tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:60px;"><div class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-title">No contacts found</div><div class="empty-state-subtitle">Try adjusting your search or filters, or import some contacts</div><a href="/import" class="btn btn-primary">Import Contacts</a></div></td></tr>`;
+        } else {
+          tbody.innerHTML = data.contacts.map((c: any) => {
+            const opted = c.opted_out === 1;
+            return `<tr data-id="${c.id}">
+              <td><input type="checkbox" class="row-check" style="width:auto;" data-id="${c.id}" /></td>
+              <td><strong>${escapeHtml(c.name || '-')}</strong></td>
+              <td style="font-family:monospace;font-size:12px;">${escapeHtml(c.phone)}</td>
+              <td>${escapeHtml(c.company || '-')}</td>
+              <td>${escapeHtml(c.city || '-')}</td>
+              <td>${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : '-'}</td>
+              <td>${c.lists ? c.lists.split(', ').map((x: string) => `<span class="chip">${escapeHtml(x)}</span>`).join(' ') : '<span style="color:var(--text-muted);">-</span>'}</td>
+              <td>${opted ? '<span class="badge badge-danger">Opted Out</span>' : '<span class="badge badge-success">Active</span>'}</td>
+              <td><div class="row-actions">
+                <button class="btn btn-sm btn-secondary btn-edit" data-id="${c.id}">✏️</button>
+                <button class="btn btn-sm btn-danger btn-delete" data-id="${c.id}">🗑</button>
+              </div></td>
+            </tr>`;
+          }).join('');
+        }
+
+        pagination.classList.add('pagination');
+        paginateUi({ container: pagination, total: data.total, page, perPage, onChange: (p: number) => { page = p; loadContacts(); } });
+
+        bindRowActions();
+      } catch (_) {}
+    }
+
+    function bindRowActions() {
+      document.querySelectorAll('.btn-edit').forEach(b => b.addEventListener('click', () => editContact((b as any).dataset.id)));
+      document.querySelectorAll('.btn-delete').forEach(b => b.addEventListener('click', async () => await deleteContact((b as any).dataset.id)));
+    }
+
+    async function editContact(id: string) {
+      try {
+        const c = await api(`/api/contacts/${id}`);
+        const f = document.getElementById('editContactForm')! as HTMLFormElement;
+        const idInput = f.querySelector<HTMLInputElement>('[name="id"]');
+        const phoneInput = f.querySelector<HTMLInputElement>('[name="phone"]');
+        const nameInput = f.querySelector<HTMLInputElement>('[name="name"]');
+        const companyInput = f.querySelector<HTMLInputElement>('[name="company"]');
+        const cityInput = f.querySelector<HTMLInputElement>('[name="city"]');
+        const emailInput = f.querySelector<HTMLInputElement>('[name="email"]');
+        if (idInput) idInput.value = c.id;
+        if (phoneInput) phoneInput.value = c.phone;
+        if (nameInput) nameInput.value = c.name || '';
+        if (companyInput) companyInput.value = c.company || '';
+        if (cityInput) cityInput.value = c.city || '';
+        if (emailInput) emailInput.value = c.email || '';
+        openModal('editContactModal');
+      } catch(_) {}
+    }
+
+    async function deleteContact(id: string) {
+      if (!confirm('Delete this contact?')) return;
+      try {
+        await api(`/api/contacts/${id}`, { method: 'DELETE' });
+        toast('Contact deleted', 'success'); loadContacts();
+      } catch(_) {}
+    }
+
+    const checkAll = document.getElementById('checkAll') as HTMLInputElement | null;
+    if (checkAll) {
+      checkAll.addEventListener('change', () => {
+        document.querySelectorAll<HTMLInputElement>('.row-check').forEach(cb => {
+          cb.checked = checkAll.checked;
+        });
+      });
+    }
+
+    (document.getElementById('newContactForm') as HTMLFormElement).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const data = Object.fromEntries(new FormData(f).entries());
+      try {
+        await api('/api/contacts', { method: 'POST', body: data });
+        toast('Contact created', 'success');
+        f.reset(); closeModal('newContactModal'); loadContacts();
+      } catch(_) {}
+    });
+
+    (document.getElementById('editContactForm') as HTMLFormElement).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const idInput = f.querySelector<HTMLInputElement>('[name="id"]');
+      const id = idInput ? idInput.value : '';
+      const data = Object.fromEntries(new FormData(f).entries());
+      delete (data as any).id;
+      try {
+        await api(`/api/contacts/${id}`, { method: 'PUT', body: data });
+        toast('Contact updated', 'success');
+        f.reset(); closeModal('editContactModal'); loadContacts();
+      } catch(_) {}
+    });
+
+    searchInput.addEventListener('input', () => { page = 1; loadContacts(); });
+    optOutFilter.addEventListener('change', () => { page = 1; loadContacts(); });
+    listFilter.addEventListener('change', () => { page = 1; loadContacts(); });
+
+    bindRowActions();
+    loadLists();
+    loadContacts();
+  </script>
+</Layout>
