@@ -32,43 +32,44 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
   {isNew || (campaign && (campaign.status === 'draft' || campaign.status === 'paused')) ? (
     <div>
       <div class="wizard-steps">
-        <div class="wizard-step active" data-step="1"><div class="wizard-step-number">1</div> Contacts</div>
-        <div class="wizard-step" data-step="2"><div class="wizard-step-number">2</div> Template & Send</div>
-        <div class="wizard-step" data-step="3"><div class="wizard-step-number">3</div> Review</div>
+        <div class="wizard-step active" data-step="1"><div class="wizard-step-number">1</div> Contacts & List</div>
+        <div class="wizard-step" data-step="2"><div class="wizard-step-number">2</div> Message</div>
+        <div class="wizard-step" data-step="3"><div class="wizard-step-number">3</div> Media & Options</div>
+        <div class="wizard-step" data-step="4"><div class="wizard-step-number">4</div> Review & Send</div>
       </div>
 
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;" class="stat-grid">
         <div>
           <div class="card" data-step-panel="1">
-            <div class="card-header"><div class="card-title">Step 1: Select contacts</div></div>
+            <div class="card-header"><div class="card-title">Step 1: Contacts</div></div>
             <div class="form-group">
               <label>Campaign Name *</label>
               <input type="text" id="campaignName" value={campaign?.name || ''} placeholder="e.g. Summer Sale 2024" />
             </div>
             <div class="form-group">
-              <label>Contact Lists *</label>
-              <select id="listSelect" multiple size="7" style="min-height:160px;">
+              <label>Contact List *</label>
+              <select id="listSelect">
+                <option value="">Select a list...</option>
                 {lists.map(l => (
-                  <option value={l.id} selected={campaign?.contact_list_id === l.id || (Array.isArray(campaign?.contact_list_ids) && campaign.contact_list_ids.includes(l.id))}>
+                  <option value={l.id} selected={campaign?.contact_list_id === l.id}>
                     {l.name} ({l.contact_count} contacts)
                   </option>
                 ))}
               </select>
-              <div class="form-hint">Hold Ctrl/Cmd to select multiple lists. Contacts who have opted out will be skipped automatically.</div>
+              <div class="form-hint">Contacts who have opted out will be skipped automatically.</div>
               <div style="margin-top:8px;">
                 <a href="/import" class="btn btn-sm btn-secondary">📥 Import Contacts</a>
                 <a href="/contacts" class="btn btn-sm btn-secondary">👥 Manage Lists</a>
               </div>
             </div>
             <div id="listInfo" style="display:none;padding:12px;background:var(--bg-tertiary);border-radius:var(--radius);margin-top:12px;"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;">
-              <button type="button" class="btn btn-secondary btn-sm" id="clearListBtn" style="display:none;">Clear selection</button>
-              <button class="btn btn-primary" data-next="2" style="margin-left:auto;">Next: Template →</button>
+            <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+              <button class="btn btn-primary" data-next="2">Next: Compose Message →</button>
             </div>
           </div>
 
           <div class="card" data-step-panel="2" style="display:none;">
-            <div class="card-header"><div class="card-title">Step 2: Template & send settings</div></div>
+            <div class="card-header"><div class="card-title">Step 2: Compose Message</div></div>
 
             <div class="form-group">
               <label>Approved WhatsApp Template *</label>
@@ -80,19 +81,56 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
                   </option>
                 ))}
               </select>
-              <div class="form-hint">Only approved Twilio template SIDs can be used for outbound WhatsApp sends.</div>
+              <div class="form-hint">Only approved Twilio template SIDs are allowed for sending.</div>
             </div>
 
-            <div class="form-group" id="bodyGroup" style="display:none;">
-              <label>Approved template content</label>
-              <textarea id="messageBody" rows="8" placeholder="Twilio-approved template text will appear here..." readonly>{initialBody}</textarea>
-              <div class="form-hint">This app uses the approved Twilio template, so custom plain-text messages are not sent here.</div>
+            <div class="form-group" id="bodyGroup">
+              <label>Template Message *</label>
+              <textarea id="messageBody" rows="8" placeholder={`Hello {'{{name}}'}! We are writing to you from {'{{company}}'} about...`}>{initialBody}</textarea>
+              <div class="form-hint">
+                <strong>Variables:</strong> <code>{'{{name}}'}</code>, <code>{'{{company}}'}</code>, <code>{'{{city}}'}</code>, <code>{'{{email}}'}</code>, <code>{'{{phone}}'}</code> and any custom columns from your import
+              </div>
+            </div>
+
+            <div style="margin-top:8px;">
+              <div class="chip">{'{{name}}'}</div>
+              <div class="chip">{'{{company}}'}</div>
+              <div class="chip">{'{{city}}'}</div>
+              <div class="chip">{'{{email}}'}</div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;margin-top:20px;">
+              <button class="btn btn-secondary" data-prev="1">← Back</button>
+              <button class="btn btn-primary" data-next="3">Next: Media & Options →</button>
+            </div>
+          </div>
+
+          <div class="card" data-step-panel="3" style="display:none;">
+            <div class="card-header"><div class="card-title">Step 3: Media & Sending Options</div></div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Media URL (Image / Video / PDF)</label>
+                <input type="url" id="mediaUrl" value={campaign?.media_url || ''} placeholder="https://example.com/image.jpg" />
+                <div class="form-hint">Optional. Must be publicly accessible HTTPS URL. Supports JPG, PNG, MP4, PDF.</div>
+              </div>
+              <div class="form-group">
+                <label>Media Type</label>
+                <select id="mediaType">
+                  <option value="">Auto-detect</option>
+                  <option value="image/jpeg" selected={campaign?.media_type === 'image/jpeg'}>Image (JPG)</option>
+                  <option value="image/png" selected={campaign?.media_type === 'image/png'}>Image (PNG)</option>
+                  <option value="video/mp4" selected={campaign?.media_type === 'video/mp4'}>Video (MP4)</option>
+                  <option value="application/pdf" selected={campaign?.media_type === 'application/pdf'}>PDF</option>
+                </select>
+              </div>
             </div>
 
             <div class="form-grid">
               <div class="form-group">
                 <label>Minimum send delay (ms)</label>
                 <input type="number" id="delayMin" min="100" step="100" value={campaign?.send_delay_min ?? 1000} />
+                <div class="form-hint">Avoid getting rate-limited or banned.</div>
               </div>
               <div class="form-group">
                 <label>Maximum send delay (ms)</label>
@@ -104,36 +142,17 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
               </div>
             </div>
 
-            <div class="form-group">
-              <label>Send batch size</label>
-              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-                <select id="batchSizePreset">
-                  <option value="100">100</option>
-                  <option value="500">500</option>
-                  <option value="5000">5000</option>
-                  <option value="10000">10000</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <input type="number" id="batchSizeCustom" min="1" step="1" placeholder="Custom batch" style="max-width:180px;display:none;" />
-              </div>
-              <div class="form-hint">Messages are sent in controlled batches to keep delivery stable and monitor failures.</div>
-            </div>
-
-            <div style="margin-top:8px;">
-              <div class="chip">Template variables are resolved from your selected contact fields</div>
-            </div>
-
             <div style="display:flex;justify-content:space-between;margin-top:20px;">
-              <button class="btn btn-secondary" data-prev="1">← Back</button>
-              <button class="btn btn-primary" data-next="3">Next: Review →</button>
+              <button class="btn btn-secondary" data-prev="2">← Back</button>
+              <button class="btn btn-primary" data-next="4">Next: Review →</button>
             </div>
           </div>
 
-          <div class="card" data-step-panel="3" style="display:none;">
-            <div class="card-header"><div class="card-title">Step 3: Review & send</div></div>
+          <div class="card" data-step-panel="4" style="display:none;">
+            <div class="card-header"><div class="card-title">Step 4: Review & Send</div></div>
             <div id="reviewPanel"></div>
             <div style="display:flex;justify-content:space-between;margin-top:20px;">
-              <button class="btn btn-secondary" data-prev="2">← Back</button>
+              <button class="btn btn-secondary" data-prev="3">← Back</button>
               <div style="display:flex;gap:10px;">
                 <button class="btn btn-secondary" id="saveDraftBtn">💾 Save Draft</button>
                 <button class="btn btn-success" id="sendBtn">🚀 Send Campaign</button>
@@ -144,15 +163,39 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
 
         <div>
           <div class="card" style="position:sticky;top:90px;">
-            <div class="card-header"><div class="card-title">Selected Lists</div></div>
-            <div id="selectedListsPanel" style="min-height:120px;">
-              <div style="padding:14px;background:var(--bg-tertiary);border-radius:var(--radius);color:var(--text-muted);">No contact list selected yet.</div>
+            <div class="card-header"><div class="card-title">Live Preview</div></div>
+            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+              <div class="whatsapp-preview">
+                <div class="whatsapp-preview-header">
+                  <div class="whatsapp-preview-avatar">J</div>
+                  <div>
+                    <div class="whatsapp-preview-name" id="previewContactName">John Doe</div>
+                    <div style="font-size:11px;opacity:0.8;">tap for more info</div>
+                  </div>
+                </div>
+                <div class="whatsapp-preview-body">
+                  <div class="whatsapp-bubble" id="previewBubble">
+                    {previewed || 'Your message will appear here...'}
+                    <div id="previewMedia" style="display:none;margin-bottom:6px;"></div>
+                    <div class="whatsapp-bubble-time">
+                      <span id="previewTime">{new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
+                      <span style="margin-left:4px;">✓✓</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div style="margin-top:16px;">
-              <label>Template variables preview</label>
-              <div style="margin-top:8px;padding:12px;background:var(--bg-tertiary);border-radius:var(--radius);font-size:12px;color:var(--text-muted);">
-                Variables found: <span id="varsList" style="font-family:monospace;">-</span>
+              <label>Preview with sample data:</label>
+              <div class="form-grid" style="gap:8px;margin-top:8px;">
+                <input type="text" id="sampleName" placeholder="Name" value="John Doe" />
+                <input type="text" id="sampleCompany" placeholder="Company" value="Acme Inc" />
+                <input type="text" id="sampleCity" placeholder="City" value="New York" />
+                <input type="text" id="sampleEmail" placeholder="Email" value="john@example.com" />
               </div>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+              Variables found: <span id="varsList" style="font-family:monospace;">-</span>
             </div>
           </div>
         </div>
@@ -359,74 +402,19 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
       const $ = <T extends HTMLElement = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel);
       const listSelect = $<HTMLSelectElement>('#listSelect');
       const listInfo = $<HTMLElement>('#listInfo');
-      const clearListBtn = $<HTMLButtonElement>('#clearListBtn');
-      const batchSizePreset = $<HTMLSelectElement>('#batchSizePreset');
-      const batchSizeCustom = $<HTMLInputElement>('#batchSizeCustom');
-
-      if (batchSizePreset && batchSizeCustom) {
-        batchSizePreset.addEventListener('change', () => {
-          const showCustom = batchSizePreset.value === 'custom';
-          batchSizeCustom.style.display = showCustom ? '' : 'none';
-          if (!showCustom) {
-            batchSizeCustom.value = '';
-          }
-        });
-      }
-
-      function getSelectedBatchSize(): number {
-        if (!batchSizePreset) return 100;
-        if (batchSizePreset.value !== 'custom') {
-          return Math.max(1, Number(batchSizePreset.value || 100));
-        }
-        const customValue = Number(batchSizeCustom?.value || 100);
-        return Math.max(1, Number.isFinite(customValue) ? customValue : 100);
-      }
 
       async function refreshListInfo() {
         if (!listSelect || !listInfo) return;
-        const selectedIds = Array.from(listSelect.selectedOptions).map(o => o.value);
-        if (!selectedIds.length) { listInfo.style.display = 'none'; return; }
+        if (!listSelect.value) { listInfo.style.display = 'none'; return; }
         try {
-          let total = 0;
-          const items: string[] = [];
-          for (const id of selectedIds) {
-            const r = await api(`/api/contact-lists/${id}`);
-            total += Number(r.count || 0);
-            const list = lists.find((x: any) => x.id === id);
-            items.push(`${list ? list.name : 'List'}: ${formatNumber(r.count || 0)}`);
-          }
+          const r = await api(`/api/contact-lists/${listSelect.value}`);
           listInfo.style.display = 'block';
-          listInfo.innerHTML = `<strong style="font-size:20px;">${formatNumber(total)}</strong> active contacts across selected lists. ${items.join(' · ')}`;
-          const selectedListsPanel = document.getElementById('selectedListsPanel');
-          if (selectedListsPanel) {
-            selectedListsPanel.innerHTML = selectedIds.map(id => {
-              const list = lists.find((x: any) => x.id === id);
-              return `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg-tertiary);"><strong>${escapeHtml(list ? list.name : 'List')}</strong><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${list ? `${formatNumber(list.contact_count)} contacts` : 'Selected list'}</div></div>`;
-            }).join('');
-          }
+          listInfo.innerHTML = `<strong style="font-size:20px;">${formatNumber(r.count || 0)}</strong> active contacts in this list (opted-outs excluded). Will send to ${r.count || 0} recipients.`;
         } catch(_) { listInfo.style.display = 'none'; }
       }
       if (listSelect) {
         listSelect.addEventListener('change', refreshListInfo);
-        if (listSelect.selectedOptions.length) refreshListInfo();
-      }
-      if (clearListBtn && listSelect) {
-        clearListBtn.addEventListener('click', () => {
-          Array.from(listSelect.options).forEach(opt => opt.selected = false);
-          refreshListInfo();
-        });
-      }
-      const syncListClearButton = () => {
-        if (clearListBtn) {
-          clearListBtn.style.display = listSelect && listSelect.selectedOptions.length ? '' : 'none';
-        }
-      };
-      if (listSelect) {
-        listSelect.addEventListener('change', () => {
-          refreshListInfo();
-          syncListClearButton();
-        });
-        syncListClearButton();
+        if (listSelect.value) refreshListInfo();
       }
 
       async function updatePreview() {
@@ -437,6 +425,8 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
           const sampleCompany = $<HTMLInputElement>('#sampleCompany');
           const sampleCity = $<HTMLInputElement>('#sampleCity');
           const sampleEmail = $<HTMLInputElement>('#sampleEmail');
+          const mediaUrlEl = $<HTMLInputElement>('#mediaUrl');
+          const mediaTypeEl = $<HTMLSelectElement>('#mediaType');
           const data = await api('/api/campaigns/preview', {
             method: 'POST',
             body: {
@@ -447,13 +437,36 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
               email: sampleEmail ? sampleEmail.value : '',
             }
           });
+          const previewBubble = $('#previewBubble');
+          if (previewBubble && previewBubble.childNodes[0]) {
+            previewBubble.childNodes[0].nodeValue = (data.preview || 'Your message will appear here...') + '\n';
+          }
           const varsList = $('#varsList');
           if (varsList) {
             varsList.textContent = data.variables && data.variables.length ? `{{${data.variables.join('}}, {{')}}` : 'none';
           }
+          const previewContactName = $('#previewContactName');
+          if (previewContactName) {
+            previewContactName.textContent = (sampleName ? sampleName.value : '') || 'John Doe';
+          }
+          const mediaUrl = mediaUrlEl ? mediaUrlEl.value : '';
+          const mediaDiv = $('#previewMedia');
+          if (mediaDiv) {
+            if (mediaUrl) {
+              mediaDiv.style.display = 'block';
+              const mt = mediaTypeEl ? mediaTypeEl.value : '';
+              if (mt.startsWith('video') || mediaUrl.endsWith('.mp4')) {
+                mediaDiv.innerHTML = `<video class="whatsapp-bubble-media" controls src="${mediaUrl}"></video>`;
+              } else if (mt === 'application/pdf' || mediaUrl.endsWith('.pdf')) {
+                mediaDiv.innerHTML = `<div class="whatsapp-bubble-media" style="padding:10px;background:rgba(255,255,255,0.3);border-radius:6px;">📄 PDF attachment</div>`;
+              } else {
+                mediaDiv.innerHTML = `<img class="whatsapp-bubble-media" src="${mediaUrl}" alt="media" onerror="this.style.display='none'" />`;
+              }
+            } else { mediaDiv.style.display = 'none'; mediaDiv.innerHTML = ''; }
+          }
         } catch(_) {}
       }
-      ['#messageBody', '#sampleName', '#sampleCompany', '#sampleCity', '#sampleEmail'].forEach(sel => {
+      ['#messageBody', '#sampleName', '#sampleCompany', '#sampleCity', '#sampleEmail', '#mediaUrl', '#mediaType'].forEach(sel => {
         const el = $(sel); el?.addEventListener('input', updatePreview); el?.addEventListener('change', updatePreview);
       });
       updatePreview();
@@ -462,14 +475,23 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
       const templatesDefs = templates;
       useTemplateSel?.addEventListener('change', () => {
         const v = useTemplateSel.value;
-        const mb = $<HTMLTextAreaElement>('#messageBody');
         if (!v) {
+          const mb = $<HTMLTextAreaElement>('#messageBody');
           if (mb && !mb.value.trim()) mb.value = '';
           return;
         }
         const t = templatesDefs.find((x: any) => x.id === v);
+        const mb = $<HTMLTextAreaElement>('#messageBody');
         if (t && t.body && mb) {
           mb.value = t.body;
+          if (t.media_url) {
+            const mu = $<HTMLInputElement>('#mediaUrl');
+            if (mu) mu.value = t.media_url;
+          }
+          if (t.media_type) {
+            const mt = $<HTMLSelectElement>('#mediaType');
+            if (mt) mt.value = t.media_type;
+          }
           updatePreview();
         }
       });
@@ -480,18 +502,17 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
         const dm = $<HTMLInputElement>('#delayMax');
         const mr = $<HTMLInputElement>('#maxRetries');
         const mbd = $<HTMLTextAreaElement>('#messageBody');
-        const selectedIds = listSelect ? Array.from(listSelect.selectedOptions).map(o => o.value).filter(Boolean) : [];
-        const fallbackListId = selectedIds[0];
-        const selectedTemplate = useTemplateSel && useTemplateSel.value ? templates.find((t: any) => t.id === useTemplateSel.value) : null;
-        const messageBody = selectedTemplate?.body || (mbd ? mbd.value : '');
+        const mu = $<HTMLInputElement>('#mediaUrl');
+        const mty = $<HTMLSelectElement>('#mediaType');
         return {
           name: cn ? cn.value.trim() : '',
-          contactListId: fallbackListId || undefined,
-          contactListIds: selectedIds,
+          contactListId: listSelect && listSelect.value ? listSelect.value : undefined,
           templateId: useTemplateSel && useTemplateSel.value ? useTemplateSel.value : undefined,
           templateSid: useTemplateSel && useTemplateSel.value ? (templates.find((t: any) => t.id === useTemplateSel.value)?.sid || '') : '',
           useTemplate: !!(useTemplateSel && useTemplateSel.value),
-          messageBody,
+          messageBody: mbd ? mbd.value : '',
+          mediaUrl: mu && mu.value ? mu.value : undefined,
+          mediaType: mty && mty.value ? mty.value : undefined,
           sendDelayMin: dl && dl.value ? (parseInt(dl.value, 10) || 1000) : 1000,
           sendDelayMax: dm && dm.value ? (parseInt(dm.value, 10) || 3000) : 3000,
           maxRetries: mr && mr.value ? (parseInt(mr.value, 10) || 3) : 3,
@@ -500,21 +521,19 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
 
       async function renderReview() {
         const payload = collectPayload();
-        const selectedLists = payload.contactListIds.map(id => lists.find((x: any) => x.id === id)).filter(Boolean);
+        const list = lists.find((x: any) => x.id === payload.contactListId);
         const panel = $('#reviewPanel');
-        const selectedBatch = getSelectedBatchSize();
         if (panel) {
           panel.innerHTML = `
             <div style="padding:16px;background:var(--bg-tertiary);border-radius:var(--radius);">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;">
                 <div><strong>Campaign Name:</strong> ${escapeHtml(payload.name || '(not set)')}</div>
-                <div><strong>Contact Lists:</strong> ${selectedLists.length ? escapeHtml(selectedLists.map((x: any) => `${x.name} (${x.contact_count})`).join(', ')) : '(not selected)'}</div>
-                <div><strong>Send Batch:</strong> ${selectedBatch.toLocaleString()} per cycle</div>
-                <div><strong>Send Delay:</strong> ${payload.sendDelayMin}–${payload.sendDelayMax} ms</div>
-                <div><strong>Retries:</strong> ${payload.maxRetries}</div>
+                <div><strong>Contact List:</strong> ${list ? escapeHtml(list.name + ' (' + list.contact_count + ' contacts)') : '(not selected)'}</div>
+                <div><strong>Media:</strong> ${payload.mediaUrl ? escapeHtml(payload.mediaUrl) : 'None'}</div>
+                <div><strong>Send Delay:</strong> ${payload.sendDelayMin}–${payload.sendDelayMax} ms · Retries: ${payload.maxRetries}</div>
               </div>
-              <div style="margin-top:16px;"><strong>Approved template:</strong>
-                <div style="margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:6px;white-space:pre-wrap;">${escapeHtml(payload.messageBody || 'Twilio template body will be sent using the selected approved template and variables.')}</div>
+              <div style="margin-top:16px;"><strong>Message:</strong>
+                <div style="margin-top:8px;padding:12px;background:var(--bg-primary);border-radius:6px;white-space:pre-wrap;">${escapeHtml(payload.messageBody || '(empty)')}</div>
               </div>
             </div>`;
         }
@@ -522,7 +541,7 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
       document.querySelectorAll('[data-next], [data-prev]').forEach(b => {
         const dn = b.getAttribute('data-next');
         const dp = b.getAttribute('data-prev');
-        if (dn === '3' || dp === '2') {
+        if (dn === '4' || dp === '3') {
           b.addEventListener('click', () => setTimeout(renderReview, 0));
         }
       });
@@ -530,8 +549,9 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
       async function saveOrSend(start: boolean) {
         const payload = collectPayload();
         if (!payload.name) { toast('Campaign name required', 'error'); setStep(1); return; }
-        if (!payload.contactListIds.length) { toast('Please select at least one contact list', 'error'); setStep(1); return; }
+        if (!payload.contactListId) { toast('Please select a contact list', 'error'); setStep(1); return; }
         if (!payload.templateId || !payload.templateSid) { toast('Please choose an approved WhatsApp template', 'error'); setStep(2); return; }
+        if (!payload.messageBody) { toast('Please select a template with a message body', 'error'); setStep(2); return; }
         try {
           let c;
           if (isNew) {
@@ -539,19 +559,11 @@ const previewed = renderTemplate(initialBody, sampleContact as any);
           } else {
             c = await api(`/api/campaigns/${id}`, { method: 'PUT', body: payload });
           }
+          toast(start ? 'Campaign starting...' : 'Draft saved', 'success');
           if (start && c && c.id) {
-            const selectedBatch = getSelectedBatchSize();
-            const result = await api(`/api/campaigns/${c.id}/control`, { method: 'POST', body: { action: 'start', batchSize: selectedBatch } });
-            toast(result.message || 'Campaign started successfully.', result.success ? 'success' : 'error', result.success ? 'Campaign launched' : 'Launch failed');
-            if (result.success) {
-              setTimeout(() => { location.href = `/campaigns/${c.id}`; }, 800);
-              return;
-            }
+            await api(`/api/campaigns/${c.id}/control`, { method: 'POST', body: { action: 'start' } });
           }
-          toast(start ? 'Campaign start failed.' : 'Draft saved', start ? 'error' : 'success', start ? 'Campaign launch failed' : 'Draft saved');
-          if (!start) {
-            setTimeout(() => { location.href = c && c.id ? `/campaigns/${c.id}` : '/campaigns'; }, 600);
-          }
+          setTimeout(() => { location.href = c && c.id ? `/campaigns/${c.id}` : '/campaigns'; }, 600);
         } catch(_) {}
       }
       $('#saveDraftBtn')?.addEventListener('click', () => saveOrSend(false));

@@ -17,6 +17,10 @@ const initialTemplates = await listTemplates();
       <button class="btn btn-primary btn-sm" data-modal-open="newTemplateModal">+ New Template</button>
     </div>
 
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span class="badge badge-primary">Default fallback: <span id="defaultTemplateBadge">Not set</span></span>
+    </div>
+
     <div class="table-wrapper">
       <table>
         <thead>

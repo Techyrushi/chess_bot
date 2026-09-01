@@ -1,13 +1,11 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { getAdminById } from '../lib/auth';
-import { listTemplates } from '../services/templates';
 
 const cookieHeader = Astro.request.headers.get('cookie');
 const sessionId = (await import('../lib/sessions')).parseSessionFromCookies(cookieHeader);
 const session = sessionId ? await (await import('../lib/sessions')).getSession(sessionId) : null;
 const admin = session?.adminId ? await getAdminById(session.adminId) : null;
-const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status !== 'rejected');
 ---
 
 <Layout>
@@ -41,11 +39,6 @@ const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status 
           <label>WhatsApp Sender Number</label>
           <input name="twilio_whatsapp_number" placeholder="whatsapp:+14155238886" value="" />
           <div class="form-hint">Format: <code>whatsapp:+1234567890</code></div>
-        </div>
-        <div class="form-group">
-          <label>Default Approved Template SID</label>
-          <input name="default_whatsapp_template_sid" placeholder="HX1234567890abcdef" value="" />
-          <div class="form-hint">Fallback default used when a campaign or test message does not choose a template explicitly.</div>
         </div>
         <div class="form-group">
           <label>Webhook Secret (signature verification)</label>
@@ -94,16 +87,11 @@ const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status 
     <form id="testForm">
       <div class="form-grid">
         <div class="form-group"><label>To (Phone Number) *</label><input name="phone" required placeholder="+918446225859 or +1234567890" /></div>
-        <div class="form-group">
-          <label>Approved Template SID *</label>
-          <select name="templateSid" required>
-            <option value="">Select approved template...</option>
-            {approvedTemplates.map(t => (
-              <option value={t.sid || ''}>{t.name} — {t.sid}</option>
-            ))}
-          </select>
-          <div class="form-hint">Only approved WhatsApp template SIDs can be used here. The default SID in settings will also be shown if configured.</div>
-        </div>
+        <div class="form-group"><label>Media URL (optional)</label><input type="url" name="mediaUrl" placeholder="https://example.com/image.jpg" /></div>
+      </div>
+      <div class="form-group">
+        <label>Message Body *</label>
+        <textarea name="body" rows="5" required placeholder="Hello world! This is a test message from your WhatsApp Campaign Manager."></textarea>
       </div>
       <div style="margin-top:8px;"><button class="btn btn-success" type="submit" id="testSendBtn">📤 Send Test Message</button></div>
     </form>
@@ -180,7 +168,6 @@ const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status 
         const authTok = document.querySelector<HTMLInputElement>('[name="twilio_auth_token"]');
         const waNum = document.querySelector<HTMLInputElement>('[name="twilio_whatsapp_number"]');
         const whSecret = document.querySelector<HTMLInputElement>('[name="twilio_webhook_secret"]');
-        const defaultTemplate = document.querySelector<HTMLInputElement>('[name="default_whatsapp_template_sid"]');
         const delayMin = document.querySelector<HTMLInputElement>('[name="send_delay_min_ms"]');
         const delayMax = document.querySelector<HTMLInputElement>('[name="send_delay_max_ms"]');
         const maxRet = document.querySelector<HTMLInputElement>('[name="max_retries"]');
@@ -188,26 +175,9 @@ const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status 
         if (authTok) authTok.value = s.twilio_auth_token || '';
         if (waNum) waNum.value = s.twilio_whatsapp_number || '';
         if (whSecret) whSecret.value = s.twilio_webhook_secret || '';
-        if (defaultTemplate) defaultTemplate.value = s.default_whatsapp_template_sid || '';
         if (delayMin) delayMin.value = s.send_delay_min_ms || '1000';
         if (delayMax) delayMax.value = s.send_delay_max_ms || '3000';
         if (maxRet) maxRet.value = s.max_retries || '3';
-
-        const templateSelect = document.querySelector<HTMLSelectElement>('[name="templateSid"]');
-        if (templateSelect) {
-          const selectedValue = s.default_whatsapp_template_sid || templateSelect.value;
-          const values = new Set<string>();
-          Array.from(templateSelect.options).forEach(opt => {
-            if (opt.value) values.add(opt.value);
-          });
-          if (s.default_whatsapp_template_sid && !values.has(s.default_whatsapp_template_sid)) {
-            const opt = document.createElement('option');
-            opt.value = s.default_whatsapp_template_sid;
-            opt.textContent = `Default SID — ${s.default_whatsapp_template_sid}`;
-            templateSelect.appendChild(opt);
-          }
-          if (selectedValue) templateSelect.value = selectedValue;
-        }
       } catch(_) {}
     }
     loadSettings();
@@ -246,12 +216,14 @@ const approvedTemplates = (await listTemplates()).filter(t => t.sid && t.status 
 
       try {
         const phoneEl = f.querySelector<HTMLInputElement>('[name="phone"]');
-        const templateSidEl = f.querySelector<HTMLSelectElement>('[name="templateSid"]');
+        const bodyEl = f.querySelector<HTMLTextAreaElement>('[name="body"]');
+        const mediaEl = f.querySelector<HTMLInputElement>('[name="mediaUrl"]');
         const r = await api('/api/test-message', {
           method: 'POST',
           body: {
             phone: phoneEl ? phoneEl.value : '',
-            templateSid: templateSidEl ? templateSidEl.value : ''
+            body: bodyEl ? bodyEl.value : '',
+            mediaUrl: mediaEl && mediaEl.value ? mediaEl.value : undefined
           }
         });
 

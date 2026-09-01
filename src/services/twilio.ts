@@ -10,30 +10,6 @@ export interface SendResult {
   status?: string;
 }
 
-export function normalizeTwilioMessageStatus(status?: string): 'sent' | 'pending' | 'failed' {
-  const normalized = String(status || '').trim().toLowerCase();
-  if (['sent', 'delivered', 'read'].includes(normalized)) return 'sent';
-  if (['accepted', 'queued', 'sending', 'pending'].includes(normalized)) return 'pending';
-  return 'failed';
-}
-
-export function resolveTwilioStatusCallbackUrl(url?: string): string | undefined {
-  const raw = String(url || '').trim();
-  if (!raw) return undefined;
-  const cleaned = raw.replace(/\/+$/, '');
-
-  try {
-    const parsed = new URL(cleaned);
-    const host = parsed.hostname.toLowerCase();
-    const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(host);
-    if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && !isLocalhost) {
-      return cleaned;
-    }
-  } catch (e) {}
-
-  return undefined;
-}
-
 export async function getTwilioClient() {
   const settings = await getTwilioSettings();
   if (!settings.accountSid || !settings.authToken) {
@@ -60,21 +36,15 @@ export async function sendWhatsAppMessage(opts: {
   const to = toWhatsAppFormat(opts.to);
 
   try {
-    const callbackUrl = resolveTwilioStatusCallbackUrl(opts.statusCallback || process.env.APP_URL || process.env.PUBLIC_URL);
-    if (!callbackUrl) {
-      return {
-        success: false,
-        errorMessage: 'Twilio status callback URL is invalid or missing. Set APP_URL to a public HTTPS URL (for example a ngrok or production domain) before sending.',
-        status: 'failed'
-      };
-    }
-
     const messageParams: any = {
       from,
       to,
-      body: opts.body,
-      statusCallback: callbackUrl
+      body: opts.body
     };
+
+    if (opts.statusCallback) {
+      messageParams.statusCallback = opts.statusCallback;
+    }
 
     if (opts.mediaUrl) {
       messageParams.mediaUrl = [opts.mediaUrl];
@@ -128,24 +98,18 @@ export async function sendWhatsAppTemplate(opts: {
   const to = toWhatsAppFormat(opts.to);
 
   try {
-    const callbackUrl = resolveTwilioStatusCallbackUrl(opts.statusCallback || process.env.APP_URL || process.env.PUBLIC_URL);
-    if (!callbackUrl) {
-      return {
-        success: false,
-        errorMessage: 'Twilio status callback URL is invalid or missing. Set APP_URL to a public HTTPS URL (for example a ngrok or production domain) before sending.',
-        status: 'failed'
-      };
-    }
-
     const messageParams: any = {
       from,
       to,
-      contentSid: opts.templateSid,
-      statusCallback: callbackUrl
+      contentSid: opts.templateSid
     };
 
     if (opts.templateVariables && opts.templateVariables.length > 0) {
       messageParams.contentVariables = JSON.stringify(opts.templateVariables);
+    }
+
+    if (opts.statusCallback) {
+      messageParams.statusCallback = opts.statusCallback;
     }
 
     const message = await client.messages.create(messageParams);
