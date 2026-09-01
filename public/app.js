@@ -6,6 +6,106 @@ const toast = (message) => {
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 3500);
 };
+
+function showAdminResult(title, message, type = "success") {
+  if (!window.Swal) {
+    toast(message);
+    return;
+  }
+
+  Swal.fire({
+    title,
+    text: message,
+    icon: type,
+    confirmButtonText: "OK",
+    confirmButtonColor: "#2b7fff",
+    timer: type === "success" ? 5000 : 7000,
+    timerProgressBar: true,
+  });
+}
+
+async function pollCampaignCompletion(campaignId, button) {
+  try {
+    const response = await fetch(`/api/campaigns/${campaignId}`);
+    if (!response.ok) throw new Error("Campaign status unavailable");
+    const data = await response.json();
+    if (data.status === "completed") {
+      button.disabled = false;
+      button.firstChild.textContent = "Send campaign ";
+      await loadResults();
+      await loadAnalytics();
+      showAdminResult(
+        "Campaign completed",
+        `Template used: ${data.templateSid || "-"}. All ${data.sent || 0} contact(s) were processed successfully.`,
+        "success",
+      );
+      return;
+    }
+    if (data.status === "completed_with_errors") {
+      button.disabled = false;
+      button.firstChild.textContent = "Send campaign ";
+      await loadResults();
+      await loadAnalytics();
+      showAdminResult(
+        "Campaign completed with errors",
+        `Template used: ${data.templateSid || "-"}. ${data.sent || 0} sent successfully and ${data.failed || 0} failed. Please review the logs.`,
+        "warning",
+      );
+      return;
+    }
+    setTimeout(() => pollCampaignCompletion(campaignId, button), 2000);
+  } catch (error) {
+    button.disabled = false;
+    button.firstChild.textContent = "Send campaign ";
+    toast("Could not fetch campaign status");
+  }
+}
+
+async function loadResults() {
+  try {
+    const response = await fetch("/api/campaigns/results");
+    if (!response.ok) return;
+    const data = await response.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    $("resultsBody").innerHTML = results.length
+      ? results.map((result) => `
+          <tr>
+            <td>${new Date(result.timestamp).toLocaleString()}</td>
+            <td>${result.contact || "-"}</td>
+            <td>${result.campaignId || "-"}</td>
+            <td>${result.templateSid || "-"}</td>
+            <td>${result.status || "sent"}</td>
+          </tr>`).join("")
+      : '<tr><td colspan="5" class="empty">No sent numbers recorded yet.</td></tr>';
+  } catch {
+    $("resultsBody").innerHTML = '<tr><td colspan="5" class="empty">Could not load sent numbers.</td></tr>';
+  }
+}
+
+async function loadAnalytics() {
+  try {
+    const response = await fetch("/api/analytics");
+    if (!response.ok) return;
+    const data = await response.json();
+    const recentCampaigns = Array.isArray(data.recentCampaigns) ? data.recentCampaigns : [];
+    $("analyticsCampaigns").textContent = data.totalCampaigns || 0;
+    $("analyticsSent").textContent = data.totalSent || 0;
+    $("analyticsFailed").textContent = data.totalFailed || 0;
+    $("analyticsRate").textContent = `${data.successRate || 0}%`;
+    $("analyticsBody").innerHTML = recentCampaigns.length
+      ? recentCampaigns.map((campaign) => `
+          <tr>
+            <td>${campaign.id}</td>
+            <td>${campaign.sent}</td>
+            <td>${campaign.failed}</td>
+            <td>${campaign.status}</td>
+          </tr>`).join("")
+      : '<tr><td colspan="4" class="empty">No analytics available yet.</td></tr>';
+  } catch {
+    $("analyticsBody").innerHTML = '<tr><td colspan="4" class="empty">Could not load analytics.</td></tr>';
+  }
+}
+
 async function loadTemplates() {
   try {
     const response = await fetch("/api/templates");
@@ -149,10 +249,10 @@ $("sendCampaign").addEventListener("click", async () => {
     $("campaignStatus").textContent =
       `Campaign ${data.campaignId} started: ${data.total} contacts in ${data.batches} batches.`;
     toast("Campaign queued successfully");
+    pollCampaignCompletion(data.campaignId, button);
   } catch (error) {
     toast(error.message);
     button.disabled = false;
-  } finally {
     button.firstChild.textContent = "Send campaign ";
   }
 });
@@ -177,6 +277,8 @@ async function checkAuth() {
   if (data.authenticated) {
     loadTemplates();
     loadLogs();
+    loadResults();
+    loadAnalytics();
     updateSummary();
   }
   } catch (error) {
@@ -205,6 +307,8 @@ $("loginForm").addEventListener("submit", async (event) => {
   $("loginGate").hidden = true;
   loadTemplates();
   loadLogs();
+  loadResults();
+  loadAnalytics();
   } catch (error) {
     status.textContent = "Cannot connect to the server. Start it with npm start.";
   }
@@ -219,6 +323,8 @@ $("clearLogs").addEventListener("click", async () => {
   const response = await fetch("/api/logs", { method: "DELETE", credentials: "same-origin" });
   if (!response.ok) return toast("Could not clear logs");
   await loadLogs();
+  await loadResults();
+  await loadAnalytics();
   toast("Activity logs cleared");
 });
 document.querySelectorAll(".tab").forEach((tab) =>
@@ -226,16 +332,25 @@ document.querySelectorAll(".tab").forEach((tab) =>
     document
       .querySelectorAll(".tab")
       .forEach((item) => item.classList.toggle("active", item === tab));
-    $("campaignPanel").hidden = tab.dataset.tab !== "campaign";
-    $("testPanel").hidden = tab.dataset.tab !== "test";
-    $("logsPanel").hidden = tab.dataset.tab !== "logs";
-    if (tab.dataset.tab === "logs") loadLogs();
+    const currentTab = tab.dataset.tab;
+    $("campaignPanel").hidden = currentTab !== "campaign";
+    $("testPanel").hidden = currentTab !== "test";
+    $("resultsPanel").hidden = currentTab !== "results";
+    $("analyticsPanel").hidden = currentTab !== "analytics";
+    $("logsPanel").hidden = currentTab !== "logs";
+    if (currentTab === "logs") loadLogs();
+    if (currentTab === "results") loadResults();
+    if (currentTab === "analytics") loadAnalytics();
     $("modeLabel").textContent =
-      tab.dataset.tab === "test"
+      currentTab === "test"
         ? "Test mode"
-        : tab.dataset.tab === "logs"
-          ? "Activity logs"
-          : "Ready to send";
+        : currentTab === "results"
+          ? "Sent numbers"
+          : currentTab === "analytics"
+            ? "Campaign analytics"
+            : currentTab === "logs"
+              ? "Activity logs"
+              : "Ready to send";
   }),
 );
 $("testForm").addEventListener("submit", async (event) => {
