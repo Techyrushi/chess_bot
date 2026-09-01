@@ -22,6 +22,8 @@ const twilioClient = twilioEnabled ? twilio(process.env.TWILIO_ACCOUNT_SID, proc
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/api/health', (req, res) => res.json({ ok: true, runtime: isVercel ? 'vercel' : 'node' }));
+
 function writeLog(type, details) {
   try {
     fs.mkdirSync(logDirectory, { recursive: true });
