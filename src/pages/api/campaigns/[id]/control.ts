@@ -14,31 +14,46 @@ export const POST: APIRoute = async ({ request, params }) => {
     const action = String(body.action || '');
 
     let result = false;
+    let message = 'Action completed';
     switch (action) {
       case 'start': {
         const c = await campaigns.getCampaign(id || '');
-        if (c && c.status === 'draft' && c.contact_list_id) {
-          const contacts = await contactService.getContactsInList(c.contact_list_id);
-          await campaigns.queueCampaignMessages(id || '', contacts);
+        const batchSize = Math.max(1, Number(body.batchSize || c?.batch_size || 100));
+        if (c && c.status === 'draft') {
+          const selectedListIds = Array.isArray(c.contact_list_ids) && c.contact_list_ids.length
+            ? c.contact_list_ids
+            : c.contact_list_id ? [c.contact_list_id] : [];
+          const uniqueContacts = new Map<string, any>();
+          for (const listId of selectedListIds) {
+            const contacts = await contactService.getContactsInList(listId);
+            for (const contact of contacts) {
+              uniqueContacts.set(contact.id, contact);
+            }
+          }
+          await campaigns.queueCampaignMessages(id || '', Array.from(uniqueContacts.values()));
         }
-        result = await sender.startCampaign(id || '');
+        result = await sender.startCampaign(id || '', batchSize);
+        message = result ? `Campaign started in batches of ${batchSize}.` : 'Campaign could not be started.';
         break;
       }
       case 'pause':
         result = await sender.pauseCampaign(id || '');
+        message = result ? 'Campaign paused.' : 'Campaign could not be paused.';
         break;
       case 'resume':
         result = await sender.resumeCampaign(id || '');
+        message = result ? 'Campaign resumed.' : 'Campaign could not be resumed.';
         break;
       case 'cancel':
         result = await sender.cancelCampaign(id || '');
+        message = result ? 'Campaign cancelled.' : 'Campaign could not be cancelled.';
         break;
       default:
         return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 });
     }
 
     await createAuditLog({ adminId: auth.adminId, action: `campaign_${action}`, resourceType: 'campaign', resourceId: id });
-    return new Response(JSON.stringify({ success: result }));
+    return new Response(JSON.stringify({ success: result, message }));
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 400 });
   }

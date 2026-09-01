@@ -82,3 +82,18 @@ export async function createAdmin(email: string, password: string, name?: string
   });
   return (await getAdminById(res.insertedId.toString()))!;
 }
+
+export async function loginAdmin(email: string, password: string): Promise<{ admin: SafeAdmin | null; error?: string }> {
+  const admin = await findAdminByEmail(email);
+  if (!admin) {
+    return { admin: null, error: 'Admin not found' };
+  }
+  
+  const isValid = verifyPassword(password, admin.password_hash);
+  if (!isValid) {
+    return { admin: null, error: 'Invalid password' };
+  }
+  
+  const safeAdmin = await getAdminById(admin.id);
+  return { admin: safeAdmin };
+}

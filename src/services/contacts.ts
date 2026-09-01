@@ -1,4 +1,4 @@
-import { getDb, mapDoc } from '@db/index';
+import { getDb, mapDoc, parseObjectId } from '@db/index';
 import { normalizePhone, isValidPhone, isValidEmail, paginate } from '@lib/validation';
 import { ObjectId } from 'mongodb';
 
@@ -59,9 +59,12 @@ export async function createContact(input: ContactInput): Promise<{ contact: Con
 
 export async function updateContact(id: string, input: Partial<ContactInput>): Promise<Contact | null> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return null;
+
   let existing;
   try {
-    existing = await db.collection('contacts').findOne({ _id: new ObjectId(id) });
+    existing = await db.collection('contacts').findOne({ _id: objectId });
   } catch (e) {
     return null;
   }
@@ -86,15 +89,17 @@ export async function updateContact(id: string, input: Partial<ContactInput>): P
   }
   updateFields.updated_at = Date.now();
 
-  await db.collection('contacts').updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
-  const updated = await db.collection('contacts').findOne({ _id: new ObjectId(id) });
+  await db.collection('contacts').updateOne({ _id: objectId }, { $set: updateFields });
+  const updated = await db.collection('contacts').findOne({ _id: objectId });
   return mapDoc<Contact>(updated);
 }
 
 export async function deleteContact(id: string): Promise<boolean> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return false;
   try {
-    const result = await db.collection('contacts').deleteOne({ _id: new ObjectId(id) });
+    const result = await db.collection('contacts').deleteOne({ _id: objectId });
     return (result.deletedCount || 0) > 0;
   } catch (e) {
     return false;
@@ -103,8 +108,10 @@ export async function deleteContact(id: string): Promise<boolean> {
 
 export async function getContact(id: string): Promise<Contact | null> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return null;
   try {
-    const result = await db.collection('contacts').findOne({ _id: new ObjectId(id) });
+    const result = await db.collection('contacts').findOne({ _id: objectId });
     return mapDoc<Contact>(result);
   } catch (e) {
     return null;
@@ -145,9 +152,9 @@ export async function listContacts(opts: {
   }
   if (opts.listId) {
     const memberships = await db.collection('contact_list_members').find({ list_id: opts.listId }).toArray();
-    const contactIds = memberships.map(m => {
-      try { return new ObjectId(m.contact_id); } catch(e) { return null; }
-    }).filter(id => id !== null) as ObjectId[];
+    const contactIds = memberships
+      .map(m => parseObjectId(m.contact_id))
+      .filter((id): id is ObjectId => id !== null);
     matchFilter._id = { $in: contactIds };
   }
 
@@ -166,10 +173,10 @@ export async function listContacts(opts: {
     const mapped = mapDoc<Contact>(raw)!;
     // Get all lists this contact is a member of
     const memberships = await db.collection('contact_list_members').find({ contact_id: mapped.id }).toArray();
-    const listIds = memberships.map(m => {
-      try { return new ObjectId(m.list_id); } catch(e) { return null; }
-    }).filter(id => id !== null) as ObjectId[];
-    
+    const listIds = memberships
+      .map(m => parseObjectId(m.list_id))
+      .filter((id): id is ObjectId => id !== null);
+
     let listNames = '';
     if (listIds.length > 0) {
       const listsDoc = await db.collection('contact_lists').find({ _id: { $in: listIds } }).toArray();
@@ -285,6 +292,18 @@ export async function createList(name: string, description?: string): Promise<st
   return result.insertedId.toString();
 }
 
+export async function getValidContactListIds(listIds: string[] = []): Promise<string[]> {
+  const db = getDb();
+  const uniqueIds = [...new Set(listIds.map(v => String(v || '').trim()).filter(Boolean))];
+  if (!uniqueIds.length) return [];
+
+  const validIds = await db.collection('contact_lists')
+    .find({ _id: { $in: uniqueIds } }, { projection: { _id: 1 } })
+    .toArray();
+
+  return validIds.map(doc => String(doc._id));
+}
+
 export async function listContactLists(): Promise<{ id: string; name: string; description: string | null; contact_count: number; created_at: number }[]> {
   const db = getDb();
   const lists = await db.collection('contact_lists').find({}).sort({ created_at: -1 }).toArray();
@@ -309,6 +328,7 @@ export async function addContactsToList(listId: string, contactIds: string[]): P
   const now = Date.now();
   
   for (const contactId of contactIds) {
+    if (!contactId || !contactId.trim()) continue;
     await db.collection('contact_list_members').updateOne(
       { list_id: listId, contact_id: contactId },
       { $setOnInsert: { added_at: now } },
@@ -327,9 +347,9 @@ export async function addContactsToList(listId: string, contactIds: string[]): P
 export async function getContactsInList(listId: string): Promise<Contact[]> {
   const db = getDb();
   const memberships = await db.collection('contact_list_members').find({ list_id: listId }).toArray();
-  const contactIds = memberships.map(m => {
-    try { return new ObjectId(m.contact_id); } catch(e) { return null; }
-  }).filter(id => id !== null) as ObjectId[];
+  const contactIds = memberships
+    .map(m => parseObjectId(m.contact_id))
+    .filter((id): id is ObjectId => id !== null);
 
   if (!contactIds.length) return [];
 
@@ -342,8 +362,10 @@ export async function getContactsInList(listId: string): Promise<Contact[]> {
 
 export async function deleteList(listId: string): Promise<boolean> {
   const db = getDb();
+  const objectId = parseObjectId(listId);
+  if (!objectId) return false;
   try {
-    const result = await db.collection('contact_lists').deleteOne({ _id: new ObjectId(listId) });
+    const result = await db.collection('contact_lists').deleteOne({ _id: objectId });
     // Cleanup list members
     await db.collection('contact_list_members').deleteMany({ list_id: listId });
     return (result.deletedCount || 0) > 0;

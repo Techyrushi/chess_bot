@@ -1,5 +1,5 @@
 import type { Contact } from './contacts';
-import { getDb, mapDoc } from '@db/index';
+import { getDb, mapDoc, parseObjectId } from '@db/index';
 import { ObjectId } from 'mongodb';
 
 export function renderTemplate(body: string, contact: Contact): string {
@@ -45,12 +45,14 @@ export interface Campaign {
   id: string;
   name: string;
   contact_list_id: string | null;
+  contact_list_ids?: string[];
   template_id: string | null;
   template_sid?: string;
   template_variables?: string;
   message_body: string;
   media_url: string | null;
   media_type: string | null;
+  batch_size?: number | null;
   use_template: number;
   status: string;
   total_contacts: number;
@@ -76,6 +78,7 @@ export interface Campaign {
 export interface CreateCampaignInput {
   name: string;
   contactListId?: string;
+  contactListIds?: string[];
   templateId?: string;
   templateSid?: string;
   messageBody: string;
@@ -89,40 +92,65 @@ export interface CreateCampaignInput {
   createdBy: string;
 }
 
+function normalizeContactListIds(input?: string | string[]): string[] {
+  const raw = Array.isArray(input) ? input : input ? [input] : [];
+  return [...new Set(raw.map(v => String(v || '').trim()).filter(Boolean))];
+}
+
+async function resolveValidListIds(input?: string | string[]): Promise<string[]> {
+  const ids = normalizeContactListIds(input);
+  if (!ids.length) return [];
+
+  const db = getDb();
+  const docs = await db.collection('contact_lists')
+    .find({ _id: { $in: ids } }, { projection: { _id: 1 } })
+    .toArray();
+
+  const valid = docs.map(doc => String(doc._id));
+  return [...new Set(valid)];
+}
+
 export async function createCampaign(input: CreateCampaignInput): Promise<Campaign> {
   const db = getDb();
   const now = Date.now();
-  const listId = input.contactListId || null;
+  const listIds = await resolveValidListIds(input.contactListIds || input.contactListId);
+  const listId = listIds[0] || null;
   let totalContacts = 0;
 
-  let templateSid = input.templateSid || null;
-  if (!templateSid && input.templateId) {
-    const template = await db.collection('templates').findOne({ _id: new ObjectId(input.templateId) });
-    templateSid = template?.sid || null;
+  let template: any = null;
+  if (input.templateId) {
+    const templateObjectId = parseObjectId(input.templateId);
+    if (templateObjectId) template = await db.collection('templates').findOne({ _id: templateObjectId });
   }
 
-  if (listId) {
-    const memberships = await db.collection('contact_list_members').find({ list_id: listId }).toArray();
-    const contactIds = memberships.map(m => {
-      try { return new ObjectId(m.contact_id); } catch(e) { return null; }
-    }).filter(id => id !== null) as ObjectId[];
+  let templateSid = input.templateSid || template?.sid || null;
+  const templateBody = (input.messageBody && input.messageBody.trim()) || template?.body || '';
+
+  if (listIds.length) {
+    const memberships = await db.collection('contact_list_members').find({ list_id: { $in: listIds } }).toArray();
+    const contactIds = memberships
+      .map(m => parseObjectId(m.contact_id))
+      .filter((id): id is ObjectId => id !== null);
 
     if (contactIds.length > 0) {
-      totalContacts = await db.collection('contacts').countDocuments({
+      const uniqueContactIds = await db.collection('contacts').distinct('_id', {
         _id: { $in: contactIds },
         opted_out: 0
       });
+      totalContacts = uniqueContactIds.length;
     }
   }
 
   const result = await db.collection('campaigns').insertOne({
     name: input.name.trim(),
     contact_list_id: listId,
+    contact_list_ids: listIds,
     template_id: input.templateId || null,
     template_sid: templateSid,
-    message_body: input.messageBody,
+    message_body: templateBody,
     media_url: input.mediaUrl || null,
     media_type: input.mediaType || null,
+    batch_size: 100,
     use_template: input.useTemplate ? 1 : 0,
     status: 'draft',
     total_contacts: totalContacts,
@@ -159,16 +187,25 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Campai
 
 export async function getCampaign(id: string): Promise<Campaign | null> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return null;
   try {
-    const row = await db.collection('campaigns').findOne({ _id: new ObjectId(id) });
+    const row = await db.collection('campaigns').findOne({ _id: objectId });
     if (!row) return null;
     const campaign = mapDoc<Campaign>(row)!;
 
-    if (campaign.contact_list_id) {
+    const listIds = Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length
+      ? campaign.contact_list_ids
+      : campaign.contact_list_id ? [campaign.contact_list_id] : [];
+
+    if (listIds.length) {
       try {
-        const list = await db.collection('contact_lists').findOne({ _id: new ObjectId(campaign.contact_list_id) });
-        if (list) {
-          campaign.list_name = list.name;
+        const validObjectIds = listIds.map(id => parseObjectId(id)).filter((id): id is ObjectId => id !== null);
+        if (validObjectIds.length) {
+          const lists = await db.collection('contact_lists').find({ _id: { $in: validObjectIds } }).toArray();
+          if (lists.length) {
+            campaign.list_name = lists.map(l => l.name).join(', ');
+          }
         }
       } catch (e) {}
     }
@@ -206,11 +243,17 @@ export async function listCampaigns(opts: { page?: number; perPage?: number; sta
   const campaigns: Campaign[] = [];
   for (const row of rows) {
     const campaign = mapDoc<Campaign>(row)!;
-    if (campaign.contact_list_id) {
+    const listIds = Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length
+      ? campaign.contact_list_ids
+      : campaign.contact_list_id ? [campaign.contact_list_id] : [];
+    if (listIds.length) {
       try {
-        const list = await db.collection('contact_lists').findOne({ _id: new ObjectId(campaign.contact_list_id) });
-        if (list) {
-          campaign.list_name = list.name;
+        const validObjectIds = listIds.map(id => parseObjectId(id)).filter((id): id is ObjectId => id !== null);
+        if (validObjectIds.length) {
+          const lists = await db.collection('contact_lists').find({ _id: { $in: validObjectIds } }).toArray();
+          if (lists.length) {
+            campaign.list_name = lists.map(l => l.name).join(', ');
+          }
         }
       } catch (e) {}
     }
@@ -231,6 +274,12 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
   if (existing.status !== 'draft' && existing.status !== 'paused') return existing;
 
   const updateFields: any = {};
+
+  const normalizedListIds = await resolveValidListIds((updates.contactListIds || updates.contactListId) as any);
+  if (updates.contactListId !== undefined || updates.contactListIds !== undefined) {
+    updateFields.contact_list_id = normalizedListIds[0] || null;
+    updateFields.contact_list_ids = normalizedListIds;
+  }
 
   const fields: [keyof CreateCampaignInput, (v: any) => any][] = [
     ['name', v => v?.trim()],
@@ -256,24 +305,33 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
 
   if (updates.templateId !== undefined || updates.templateSid !== undefined) {
     const resolvedTemplateId = updates.templateId ?? existing.template_id ?? null;
-    const template = resolvedTemplateId ? await db.collection('templates').findOne({ _id: new ObjectId(resolvedTemplateId) }) : null;
+    const templateObjectId = resolvedTemplateId ? parseObjectId(resolvedTemplateId) : null;
+    const template = templateObjectId ? await db.collection('templates').findOne({ _id: templateObjectId }) : null;
     updateFields.template_sid = updates.templateSid || template?.sid || null;
+    if ((updates.messageBody === undefined || !String(updates.messageBody || '').trim()) && template?.body) {
+      updateFields.message_body = template.body;
+    }
   }
 
-  if (updates.contactListId !== undefined) {
-    const listId = updates.contactListId || null;
+  if (updates.messageBody !== undefined && String(updates.messageBody || '').trim()) {
+    updateFields.message_body = updates.messageBody;
+  }
+
+  if (updates.contactListId !== undefined || updates.contactListIds !== undefined) {
+    const listIds = await resolveValidListIds((updates.contactListIds || updates.contactListId) as any);
     let totalContacts = 0;
-    if (listId) {
-      const memberships = await db.collection('contact_list_members').find({ list_id: listId }).toArray();
-      const contactIds = memberships.map(m => {
-        try { return new ObjectId(m.contact_id); } catch(e) { return null; }
-      }).filter(id => id !== null) as ObjectId[];
+    if (listIds.length) {
+      const memberships = await db.collection('contact_list_members').find({ list_id: { $in: listIds } }).toArray();
+      const contactIds = memberships
+        .map(m => parseObjectId(m.contact_id))
+        .filter((id): id is ObjectId => id !== null);
 
       if (contactIds.length > 0) {
-        totalContacts = await db.collection('contacts').countDocuments({
+        const uniqueContactIds = await db.collection('contacts').distinct('_id', {
           _id: { $in: contactIds },
           opted_out: 0
         });
+        totalContacts = uniqueContactIds.length;
       }
     }
     updateFields.total_contacts = totalContacts;
@@ -281,7 +339,7 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
 
   if (Object.keys(updateFields).length > 0) {
     updateFields.updated_at = Date.now();
-    await db.collection('campaigns').updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+    await db.collection('campaigns').updateOne({ _id: objectId }, { $set: updateFields });
   }
 
   return await getCampaign(id || '');
@@ -289,6 +347,8 @@ export async function updateCampaign(id: string, updates: Partial<CreateCampaign
 
 export async function transitionCampaignStatus(id: string, newStatus: string): Promise<Campaign | null> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return null;
   const now = Date.now();
   const validTransitions: Record<string, string[]> = {
     'draft': ['queued', 'cancelled'],
@@ -322,17 +382,19 @@ export async function transitionCampaignStatus(id: string, newStatus: string): P
     updateFields.completed_at = now;
   }
 
-  await db.collection('campaigns').updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+  await db.collection('campaigns').updateOne({ _id: objectId }, { $set: updateFields });
   return await getCampaign(id || '');
 }
 
 export async function deleteCampaign(id: string): Promise<boolean> {
   const db = getDb();
+  const objectId = parseObjectId(id);
+  if (!objectId) return false;
   try {
     const c = await getCampaign(id || '');
     if (!c) return false;
     if (c.status === 'sending') return false;
-    const result = await db.collection('campaigns').deleteOne({ _id: new ObjectId(id) });
+    const result = await db.collection('campaigns').deleteOne({ _id: objectId });
     // Also delete references in state
     await db.collection('campaign_sender_state').deleteOne({ _id: id as any });
     return (result.deletedCount || 0) > 0;
@@ -377,7 +439,7 @@ export async function queueCampaignMessages(campaignId: string, contacts: Contac
 
   const now = Date.now();
   const messagesToInsert = contacts.map(c => {
-    const renderedBody = renderTemplate(campaign.message_body, c);
+    const renderedBody = renderTemplate(campaign.message_body || '', c);
     return {
       campaign_id: campaignId,
       contact_id: c.id,
@@ -395,16 +457,19 @@ export async function queueCampaignMessages(campaignId: string, contacts: Contac
 
   await db.collection('messages').insertMany(messagesToInsert);
 
-  await db.collection('campaigns').updateOne(
-    { _id: new ObjectId(campaignId) },
-    {
-      $set: {
-        queued_count: contacts.length,
-        total_contacts: contacts.length,
-        updated_at: now
+  const safeCampaignObjectId = parseObjectId(campaignId);
+  if (safeCampaignObjectId) {
+    await db.collection('campaigns').updateOne(
+      { _id: safeCampaignObjectId },
+      {
+        $set: {
+          queued_count: contacts.length,
+          total_contacts: contacts.length,
+          updated_at: now
+        }
       }
-    }
-  );
+    );
+  }
 
   return contacts.length;
 }
@@ -479,12 +544,15 @@ export async function getDashboardStats(): Promise<{
   for (const row of recentCampaignsRaw) {
     const campaign = mapDoc<Campaign>(row)!;
     if (campaign.contact_list_id) {
-      try {
-        const list = await db.collection('contact_lists').findOne({ _id: new ObjectId(campaign.contact_list_id) });
-        if (list) {
-          campaign.list_name = list.name;
-        }
-      } catch (e) {}
+      const validListId = parseObjectId(campaign.contact_list_id);
+      if (validListId) {
+        try {
+          const list = await db.collection('contact_lists').findOne({ _id: validListId });
+          if (list) {
+            campaign.list_name = list.name;
+          }
+        } catch (e) {}
+      }
     }
     campaigns.push(campaign);
   }
@@ -499,12 +567,15 @@ export async function getDashboardStats(): Promise<{
   for (const doc of recentIncomingRaw) {
     const mapped = mapDoc<any>(doc)!;
     if (mapped.contact_id) {
-      try {
-        const contact = await db.collection('contacts').findOne({ _id: new ObjectId(mapped.contact_id) });
-        if (contact) {
-          mapped.contact_name = contact.name;
-        }
-      } catch (e) {}
+      const validContactId = parseObjectId(mapped.contact_id);
+      if (validContactId) {
+        try {
+          const contact = await db.collection('contacts').findOne({ _id: validContactId });
+          if (contact) {
+            mapped.contact_name = contact.name;
+          }
+        } catch (e) {}
+      }
     }
     recentIncoming.push(mapped);
   }

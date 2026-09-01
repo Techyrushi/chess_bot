@@ -1,4 +1,4 @@
-import { getDb, mapDoc } from '@db/index';
+import { getDb, mapDoc, parseObjectId } from '@db/index';
 import { sendWhatsAppMessage, sendWhatsAppTemplate, isConfigured, resolveTwilioStatusCallbackUrl } from './twilio';
 import { getCampaign, transitionCampaignStatus, getCampaignAnalytics } from './campaigns';
 import { isOptedOut } from './contacts';
@@ -25,8 +25,11 @@ async function updateCampaignCounts(campaignId: string): Promise<void> {
   const f = await db.collection('messages').countDocuments({ campaign_id: campaignId, status: 'failed' });
   const u = await db.collection('messages').countDocuments({ campaign_id: campaignId, status: 'undelivered' });
 
+  const safeCampaignId = parseObjectId(campaignId);
+  if (!safeCampaignId) return;
+
   await db.collection('campaigns').updateOne(
-    { _id: new ObjectId(campaignId) },
+    { _id: safeCampaignId },
     {
       $set: {
         queued_count: q,
@@ -99,18 +102,21 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
     if (await isOptedOut(msg.phone)) {
       const optOutTimestamp = new Date().toISOString();
       console.log(`[${optOutTimestamp}] [Campaign ${campaignId}] ⏭️  Skipping opted-out number: ${msg.phone}`);
-      await db.collection('messages').updateOne(
-        { _id: new ObjectId(msg.id) },
-        {
-          $set: {
-            status: 'failed',
-            error_code: 'OPT_OUT',
-            error_message: 'Contact opted out',
-            failed_at: Date.now(),
-            updated_at: Date.now()
+      const safeMessageId = parseObjectId(msg.id);
+      if (safeMessageId) {
+        await db.collection('messages').updateOne(
+          { _id: safeMessageId },
+          {
+            $set: {
+              status: 'failed',
+              error_code: 'OPT_OUT',
+              error_message: 'Contact opted out',
+              failed_at: Date.now(),
+              updated_at: Date.now()
+            }
           }
-        }
-      );
+        );
+      }
       processed++;
       continue;
     }
@@ -125,18 +131,21 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
 
     if (!templateSid) {
       console.error(`[Campaign ${campaignId}] No WhatsApp template configured - cannot send`);
-      await db.collection('messages').updateOne(
-        { _id: new ObjectId(msg.id) },
-        {
-          $set: {
-            status: 'failed',
-            error_code: 'NO_TEMPLATE',
-            error_message: 'WhatsApp template not configured',
-            failed_at: Date.now(),
-            updated_at: Date.now()
+      const safeMessageId = parseObjectId(msg.id);
+      if (safeMessageId) {
+        await db.collection('messages').updateOne(
+          { _id: safeMessageId },
+          {
+            $set: {
+              status: 'failed',
+              error_code: 'NO_TEMPLATE',
+              error_message: 'WhatsApp template not configured',
+              failed_at: Date.now(),
+              updated_at: Date.now()
+            }
           }
-        }
-      );
+        );
+      }
       processed++;
       continue;
     }
@@ -173,10 +182,13 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
         update.pending_timestamp = eventTimestamp;
       }
 
-      await db.collection('messages').updateOne(
-        { _id: new ObjectId(msg.id) },
-        { $set: update }
-      );
+      const safeMessageId = parseObjectId(msg.id);
+      if (safeMessageId) {
+        await db.collection('messages').updateOne(
+          { _id: safeMessageId },
+          { $set: update }
+        );
+      }
       processed++;
     } else {
       const errorTimestamp = new Date().toISOString();
@@ -187,38 +199,44 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
 
       if (newRetry < maxRetries) {
         // Retry on next batch
-        await db.collection('messages').updateOne(
-          { _id: new ObjectId(msg.id) },
-          {
-            $set: {
-              retry_count: newRetry,
-              error_code: String(result.errorCode || ''),
-              error_message: result.errorMessage || '',
-              last_error_timestamp: errorTimestamp,
-              pending_at: now,
-              pending_timestamp: errorTimestamp,
-              status: 'pending',
-              updated_at: now
+        const safeMessageId = parseObjectId(msg.id);
+        if (safeMessageId) {
+          await db.collection('messages').updateOne(
+            { _id: safeMessageId },
+            {
+              $set: {
+                retry_count: newRetry,
+                error_code: String(result.errorCode || ''),
+                error_message: result.errorMessage || '',
+                last_error_timestamp: errorTimestamp,
+                pending_at: now,
+                pending_timestamp: errorTimestamp,
+                status: 'pending',
+                updated_at: now
+              }
             }
-          }
-        );
+          );
+        }
         console.log(`[${errorTimestamp}] [Campaign ${campaignId}] ⏳ Message to ${msg.phone} marked PENDING for retry`);
       } else {
         // Max retries exceeded
-        await db.collection('messages').updateOne(
-          { _id: new ObjectId(msg.id) },
-          {
-            $set: {
-              retry_count: newRetry,
-              status: 'failed',
-              error_code: String(result.errorCode || ''),
-              error_message: result.errorMessage || '',
-              failed_at: now,
-              failed_timestamp: errorTimestamp,
-              updated_at: now
+        const safeMessageId = parseObjectId(msg.id);
+        if (safeMessageId) {
+          await db.collection('messages').updateOne(
+            { _id: safeMessageId },
+            {
+              $set: {
+                retry_count: newRetry,
+                status: 'failed',
+                error_code: String(result.errorCode || ''),
+                error_message: result.errorMessage || '',
+                failed_at: now,
+                failed_timestamp: errorTimestamp,
+                updated_at: now
+              }
             }
-          }
-        );
+          );
+        }
         console.log(`[${errorTimestamp}] [Campaign ${campaignId}] ❌ Message to ${msg.phone} marked FAILED after ${maxRetries} retries`);
         errors++;
         processed++;
@@ -246,11 +264,23 @@ export async function runCampaignBatch(campaignId: string, batchSize: number = 5
   return { processed, errors, finished: false };
 }
 
-export async function startCampaign(campaignId: string): Promise<boolean> {
+export async function startCampaign(campaignId: string, batchSize: number = 100): Promise<boolean> {
   const campaign = await getCampaign(campaignId);
   if (!campaign) return false;
-  if (!campaign.contact_list_id) return false;
+
+  const listIds = Array.isArray(campaign.contact_list_ids) && campaign.contact_list_ids.length
+    ? campaign.contact_list_ids
+    : campaign.contact_list_id ? [campaign.contact_list_id] : [];
+
+  if (!listIds.length) return false;
   if (!(await isConfigured())) return false;
+
+  const normalizedBatch = Math.max(1, Math.min(Number(batchSize) || 100, 10000));
+  const db = getDb();
+  const safeCampaignObjectId = parseObjectId(campaignId);
+  if (safeCampaignObjectId) {
+    await db.collection('campaigns').updateOne({ _id: safeCampaignObjectId }, { $set: { batch_size: normalizedBatch, updated_at: Date.now() } });
+  }
 
   const transitioned = await transitionCampaignStatus(campaignId, 'sending');
   if (!transitioned) {
@@ -269,7 +299,8 @@ export async function startCampaign(campaignId: string): Promise<boolean> {
           if (!fresh || (fresh.status !== 'sending')) {
             break;
           }
-          const r = await runCampaignBatch(campaignId, 20);
+          const batchSize = Number((await getCampaign(campaignId))?.batch_size ?? 100) || 100;
+          const r = await runCampaignBatch(campaignId, batchSize);
           finished = r.finished;
         }
       } catch (err) {

@@ -1,0 +1,132 @@
+<% layout('layout') %>
+
+<div class="page-header">
+  <div>
+    <h1><%= campaign.name %></h1>
+    <p class="text-muted">Campaign details and analytics</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button onclick="startCampaign()" class="btn btn-primary" <% if (campaign.status !== 'draft' && campaign.status !== 'paused') { %>disabled<% } %>>Start</button>
+    <button onclick="pauseCampaign()" class="btn btn-secondary" <% if (campaign.status !== 'sending') { %>disabled<% } %>>Pause</button>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:28px;">
+  <div class="stat-card">
+    <div class="stat-label">Total Contacts</div>
+    <div class="stat-value"><%= campaign.total_contacts || 0 %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Sent</div>
+    <div class="stat-value"><%= campaign.sent_count || 0 %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Delivered</div>
+    <div class="stat-value"><%= campaign.delivered_count || 0 %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Read</div>
+    <div class="stat-value"><%= campaign.read_count || 0 %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Failed</div>
+    <div class="stat-value"><%= campaign.failed_count || 0 %></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Queued</div>
+    <div class="stat-value"><%= campaign.queued_count || 0 %></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Messages</h2>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Phone</th>
+          <th>Status</th>
+          <th>Sent</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (messages && messages.messages.length > 0) { %>
+          <% messages.messages.forEach(msg => { %>
+            <tr>
+              <td><%= msg.phone %></td>
+              <td><span class="badge badge-<%= msg.status %>"><%= msg.status %></span></td>
+              <td><%= msg.sent_at ? new Date(msg.sent_at).toLocaleString() : '-' %></td>
+              <td><small><%= msg.error_message || '-' %></small></td>
+            </tr>
+          <% }); %>
+        <% } else { %>
+          <tr>
+            <td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted);">No messages</td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Details</h2>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div style="font-size:12px;color:var(--text-muted);">Status</div>
+        <div style="font-weight:500;"><span class="badge badge-<%= campaign.status %>"><%= campaign.status %></span></div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--text-muted);">Contact Lists</div>
+        <div style="font-weight:500;"><%= campaign.list_name || '-' %></div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--text-muted);">Created</div>
+        <div style="font-weight:500;"><%= new Date(campaign.created_at).toLocaleString() %></div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--text-muted);">Batch Size</div>
+        <div style="font-weight:500;"><%= campaign.batch_size || 100 %></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function startCampaign() {
+    if (!confirm('Start sending campaign?')) return;
+    try {
+      const res = await fetch('/api/campaigns/<%= campaign.id %>/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', batchSize: <%= campaign.batch_size || 100 %> })
+      });
+      if (!res.ok) throw new Error('Failed to start');
+      location.reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function pauseCampaign() {
+    if (!confirm('Pause campaign?')) return;
+    try {
+      const res = await fetch('/api/campaigns/<%= campaign.id %>/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause' })
+      });
+      if (!res.ok) throw new Error('Failed to pause');
+      location.reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  setupThemeToggle();
+  setupSidebarToggle();
+</script>

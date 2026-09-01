@@ -31,6 +31,56 @@ export function isValidEmail(email: string): boolean {
 
 export const phoneSchema = z.string().refine(isValidPhone, { message: 'Invalid phone number' });
 
+export function validateCampaignSendInput(input: {
+  name?: string;
+  contactListId?: string;
+  contactListIds?: string[];
+  templateId?: string;
+  templateSid?: string;
+  messageBody?: string;
+  useTemplate?: boolean;
+}): {
+  name: string;
+  contactListId: string;
+  contactListIds: string[];
+  templateSid: string;
+  messageBody: string;
+} {
+  const name = String(input.name ?? '').trim();
+  if (!name) throw new Error('Campaign name is required');
+
+  const contactListIds = Array.isArray(input.contactListIds)
+    ? input.contactListIds.map(v => String(v ?? '').trim()).filter(Boolean)
+    : [];
+
+  const singleId = String(input.contactListId ?? '').trim();
+  if (singleId && !contactListIds.includes(singleId)) contactListIds.push(singleId);
+
+  if (!contactListIds.length) throw new Error('Please select at least one contact list');
+
+  const templateSid = String(input.templateSid ?? '').trim();
+  if (!templateSid && input.templateId) {
+    return {
+      name,
+      contactListId: contactListIds[0],
+      contactListIds,
+      templateSid: '',
+      messageBody: String(input.messageBody ?? '')
+    };
+  }
+  if (!templateSid) {
+    throw new Error('Approved WhatsApp template SID is required');
+  }
+
+  return {
+    name,
+    contactListId: contactListIds[0],
+    contactListIds,
+    templateSid,
+    messageBody: String(input.messageBody ?? '')
+  };
+}
+
 export const contactSchema = z.object({
   phone: z.string().refine(isValidPhone, { message: 'Invalid phone number format' }),
   name: z.string().max(200).optional().or(z.literal('')),

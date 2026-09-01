@@ -1,0 +1,48 @@
+<% layout('layout') %>
+
+<div class="page-header">
+  <h1>Templates</h1>
+  <p class="text-muted">WhatsApp approved message templates</p>
+</div>
+
+<div class="card">
+  <div style="padding:16px;border-bottom:1px solid var(--border-color);">
+    <p style="color:var(--text-muted);margin:0;font-size:14px;">
+      Approved templates from your Twilio WhatsApp Business Account
+    </p>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Body</th>
+        <th>Language</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (templates && templates.length > 0) { %>
+        <% templates.forEach(template => { %>
+          <tr>
+            <td><strong><%= template.name %></strong></td>
+            <td><small><%= template.body || '-' %></small></td>
+            <td><%= template.language || '-' %></td>
+            <td><span class="badge badge-success">Approved</span></td>
+          </tr>
+        <% }); %>
+      <% } else { %>
+        <tr>
+          <td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted);">
+            No templates found. Create one in Twilio console.
+          </td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  setupThemeToggle();
+  setupSidebarToggle();
+</script>

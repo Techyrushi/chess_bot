@@ -91,3 +91,46 @@ test('normalizeTwilioMessageStatus - maps approved template delivery states', ()
   assert.equal(normalizeTwilioMessageStatus('delivered'), 'sent');
   assert.equal(normalizeTwilioMessageStatus('failed'), 'failed');
 });
+
+const { validateCampaignSendInput } = await import('../src/lib/validation.ts');
+const { parseObjectId } = await import('../src/db/index.ts');
+
+test('validateCampaignSendInput - allows direct template sends without custom message text', () => {
+  const input = {
+    name: 'Launch Campaign',
+    contactListId: 'list_123',
+    templateSid: 'HX1234567890abcdef',
+    messageBody: ''
+  };
+
+  const validated = validateCampaignSendInput(input);
+  assert.equal(validated.contactListId, 'list_123');
+  assert.equal(validated.templateSid, 'HX1234567890abcdef');
+  assert.equal(validated.messageBody, '');
+  assert.doesNotThrow(() => validateCampaignSendInput(input));
+});
+
+test('validateCampaignSendInput - accepts multiple contact lists and approved template SID', () => {
+  const validated = validateCampaignSendInput({
+    name: 'Launch Campaign',
+    contactListIds: ['list_1', 'list_2'],
+    templateSid: 'HX1234567890abcdef',
+    messageBody: ''
+  });
+
+  assert.deepEqual(validated.contactListIds, ['list_1', 'list_2']);
+  assert.equal(validated.contactListId, 'list_1');
+});
+
+test('validateCampaignSendInput - rejects missing approved template SID', () => {
+  assert.throws(() => validateCampaignSendInput({
+    name: 'Launch Campaign',
+    contactListId: 'list_123',
+    messageBody: ''
+  }), /approved WhatsApp template SID/i);
+});
+
+test('parseObjectId - safely ignores malformed ids', () => {
+  assert.equal(parseObjectId('not-a-valid-id'), null);
+  assert.equal(parseObjectId('507f1f77bcf86cd799439011')?.toString(), '507f1f77bcf86cd799439011');
+});

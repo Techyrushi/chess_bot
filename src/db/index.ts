@@ -1,4 +1,4 @@
-import { MongoClient, Db } from 'mongodb';
+import { MongoClient, Db, ObjectId } from 'mongodb';
 
 const uri = process.env.DB_URI || (import.meta && (import.meta as any).env && (import.meta as any).env.DB_URI) || 'mongodb://localhost:27017/whatsapp-campaign';
 const client = new MongoClient(uri);
@@ -49,7 +49,18 @@ export async function initDb() {
 export function mapDoc<T = any>(doc: any): T | null {
   if (!doc) return null;
   const { _id, ...rest } = doc;
-  return { id: _id.toString(), ...rest } as unknown as T;
+  return { id: _id?.toString ? _id.toString() : String(_id), ...rest } as unknown as T;
 }
 
-export default { getDb, initDb, mapDoc };
+export function parseObjectId(value: string | ObjectId | null | undefined): ObjectId | null {
+  if (!value) return null;
+  if (value instanceof ObjectId) return value;
+  if (typeof value === 'string') {
+    const cleaned = value.trim();
+    if (!cleaned || !ObjectId.isValid(cleaned)) return null;
+    return new ObjectId(cleaned);
+  }
+  return null;
+}
+
+export default { getDb, initDb, mapDoc, parseObjectId };

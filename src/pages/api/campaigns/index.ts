@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { requireAuth } from '@lib/sessions';
 import * as campaigns from '@services/campaigns';
 import { createAuditLog } from '@lib/audit';
+import { validateCampaignSendInput } from '@lib/validation';
 
 export const GET: APIRoute = async ({ request }) => {
   const auth = await requireAuth(request);
@@ -18,12 +19,8 @@ export const POST: APIRoute = async ({ request }) => {
   if (!auth) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   try {
     const body = await request.json();
-    const input = { ...body, createdBy: auth.adminId };
-    if (!input.name?.trim()) return new Response(JSON.stringify({ error: 'Name required' }), { status: 400 });
-    if (!input.messageBody && !input.useTemplate) {
-      return new Response(JSON.stringify({ error: 'Message required' }), { status: 400 });
-    }
-    const c = await campaigns.createCampaign(input);
+    const input = validateCampaignSendInput({ ...body, messageBody: body.messageBody || '' });
+    const c = await campaigns.createCampaign({ ...body, ...input, createdBy: auth.adminId, contactListId: input.contactListId, contactListIds: input.contactListIds });
     await createAuditLog({ adminId: auth.adminId, action: 'campaign_created', resourceType: 'campaign', resourceId: c.id, details: { name: c.name } });
     return new Response(JSON.stringify(c));
   } catch (e: any) {

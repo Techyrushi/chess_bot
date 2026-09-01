@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!columnMapRaw) return new Response(JSON.stringify({ error: 'Column map required' }), { status: 400 });
 
     const columnMap = JSON.parse(String(columnMapRaw));
-    if (!columnMap.phone) return new Response(JSON.stringify({ error: 'Phone mapping required' }), { status: 400 });
+    if (!columnMap.phone) return new Response(JSON.stringify({ error: 'Phone mapping required. Please map your Phone column before importing.' }), { status: 400 });
 
     const buf = Buffer.from(await file.arrayBuffer());
     const fullJson = excel.parseFullWorkbook(buf);
@@ -58,6 +58,10 @@ export const POST: APIRoute = async ({ request }) => {
       listId
     }));
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message || 'Import error' }), { status: 400 });
+    const message = e?.message || 'Import error';
+    if (message.includes('24 character hex string') || message.includes('ObjectId')) {
+      return new Response(JSON.stringify({ error: 'Import failed because one or more stored contact-list IDs are invalid. Please recreate the list or retry with a valid list.' }), { status: 400 });
+    }
+    return new Response(JSON.stringify({ error: message }), { status: 400 });
   }
 };

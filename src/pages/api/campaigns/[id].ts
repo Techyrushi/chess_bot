@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { requireAuth } from '@lib/sessions';
 import * as campaigns from '@services/campaigns';
 import { createAuditLog } from '@lib/audit';
+import { validateCampaignSendInput } from '@lib/validation';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const auth = await requireAuth(request);
@@ -18,7 +19,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const id = params.id;
   try {
     const body = await request.json();
-    const c = await campaigns.updateCampaign(id || '', body);
+    const normalized = validateCampaignSendInput({ ...body, messageBody: body.messageBody || '' });
+    const c = await campaigns.updateCampaign(id || '', { ...body, ...normalized, contactListId: normalized.contactListId, contactListIds: normalized.contactListIds });
     if (!c) return new Response(JSON.stringify({ error: 'Cannot update' }), { status: 400 });
     await createAuditLog({ adminId: auth.adminId, action: 'campaign_updated', resourceType: 'campaign', resourceId: id });
     return new Response(JSON.stringify(c));

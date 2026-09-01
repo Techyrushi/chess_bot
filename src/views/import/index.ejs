@@ -1,0 +1,101 @@
+<% layout('layout') %>
+
+<div class="page-header">
+  <h1>Import Contacts</h1>
+  <p class="text-muted">Upload and import contacts from Excel/CSV</p>
+</div>
+
+<div class="card" style="max-width:600px;">
+  <form id="importForm">
+    <div class="form-group">
+      <label for="file">Select File *</label>
+      <input type="file" id="file" name="file" accept=".xlsx,.xls,.csv" required />
+    </div>
+
+    <div class="form-group">
+      <label for="listName">Create/Select List</label>
+      <input type="text" id="listName" name="listName" placeholder="e.g., Q4 Campaign Leads" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%;">Preview and Import</button>
+  </form>
+</div>
+
+<div id="previewSection" style="display:none;margin-top:20px;">
+  <div class="card">
+    <div class="card-header">
+      <h2>Preview</h2>
+    </div>
+    <table class="table" id="previewTable">
+      <thead><tr><th>Phone</th><th>Name</th><th>Company</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div style="padding:16px;display:flex;gap:12px;">
+      <button onclick="confirmImport()" class="btn btn-primary">Confirm Import</button>
+      <button onclick="cancelImport()" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let importData = null;
+
+  document.getElementById('importForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('file').files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/import/preview', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Failed to preview');
+      const preview = await res.json();
+      importData = preview;
+      showPreview(preview);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  function showPreview(preview) {
+    const tbody = document.querySelector('#previewTable tbody');
+    tbody.innerHTML = preview.rows.slice(0, 10).map(row => `
+      <tr>
+        <td>${row.raw[preview.suggestedMap.phone] || '-'}</td>
+        <td>${row.raw[preview.suggestedMap.name] || '-'}</td>
+        <td>${row.raw[preview.suggestedMap.company] || '-'}</td>
+      </tr>
+    `).join('');
+    document.getElementById('previewSection').style.display = 'block';
+  }
+
+  async function confirmImport() {
+    const listName = document.getElementById('listName').value || 'Imported Contacts';
+    try {
+      const res = await fetch('/api/import/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: importData.rows.map(r => r.raw),
+          columnMap: importData.suggestedMap,
+          listName
+        })
+      });
+      if (!res.ok) throw new Error('Import failed');
+      alert('Import successful!');
+      location.href = '/contacts';
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function cancelImport() {
+    document.getElementById('previewSection').style.display = 'none';
+    importData = null;
+  }
+
+  setupThemeToggle();
+  setupSidebarToggle();
+</script>

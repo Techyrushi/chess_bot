@@ -1,0 +1,92 @@
+<% layout('layout') %>
+
+<div class="page-header">
+  <h1>Compose Message</h1>
+  <p class="text-muted">Create and send a WhatsApp campaign</p>
+</div>
+
+<div class="card">
+  <form id="campaignForm">
+    <div class="form-group">
+      <label for="name">Campaign Name *</label>
+      <input type="text" id="name" name="name" required placeholder="My Campaign" />
+    </div>
+
+    <div class="form-group">
+      <label for="contactListIds">Select Contact Lists *</label>
+      <select id="contactListIds" name="contactListIds" multiple required>
+        <option value="">Loading...</option>
+      </select>
+      <small>Hold Ctrl/Cmd to select multiple lists</small>
+    </div>
+
+    <div class="form-group">
+      <label for="templateSid">WhatsApp Template *</label>
+      <select id="templateSid" name="templateSid" required>
+        <option value="">Loading...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="batchSize">Batch Size</label>
+      <select id="batchSize" name="batchSize">
+        <option value="100">100 messages</option>
+        <option value="500">500 messages</option>
+        <option value="1000">1000 messages</option>
+        <option value="5000">5000 messages</option>
+        <option value="10000">10000 messages</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <button type="submit" class="btn btn-primary">Create Campaign</button>
+      <button type="button" onclick="history.back()" class="btn btn-secondary">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Load contact lists
+  fetch('/api/contact-lists')
+    .then(res => res.json())
+    .then(lists => {
+      const select = document.getElementById('contactListIds');
+      select.innerHTML = lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+    });
+
+  // Load templates
+  fetch('/api/templates')
+    .then(res => res.json())
+    .then(templates => {
+      const select = document.getElementById('templateSid');
+      select.innerHTML = templates.map(t => `<option value="${t.sid}">${t.name}</option>`).join('');
+    });
+
+  // Form submission
+  document.getElementById('campaignForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {
+      name: formData.get('name'),
+      contactListIds: formData.getAll('contactListIds'),
+      templateSid: formData.get('templateSid'),
+      batchSize: parseInt(formData.get('batchSize'))
+    };
+
+    try {
+      const res = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to create campaign');
+      const campaign = await res.json();
+      location.href = `/campaigns/${campaign.id}`;
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  setupThemeToggle();
+  setupSidebarToggle();
+</script>
