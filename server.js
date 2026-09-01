@@ -3,7 +3,6 @@ const express = require('express');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 const twilio = require('twilio');
-const session = require('express-session');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -12,7 +11,8 @@ const app = express();
 const port = Number(process.env.PORT || 4321);
 const upload = multer({ limits: { fileSize: Number(process.env.MAX_UPLOAD_SIZE || 25000000) } });
 const campaigns = new Map();
-const logDirectory = path.join(__dirname, 'logs');
+const isVercel = Boolean(process.env.VERCEL);
+const logDirectory = isVercel ? '/tmp/sendroom-logs' : path.join(__dirname, 'logs');
 const logFile = path.join(logDirectory, 'campaign.log');
 const dataDirectory = path.join(__dirname, 'data');
 const templateFile = path.join(dataDirectory, 'templates.json');
@@ -20,21 +20,44 @@ const twilioEnabled = Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWIL
 const twilioClient = twilioEnabled ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN) : null;
 
 app.use(express.json({ limit: '1mb' }));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'change-this-session-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: Number(process.env.SESSION_MAX_AGE || 86400000) }
-}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 function writeLog(type, details) {
-  fs.mkdirSync(logDirectory, { recursive: true });
-  fs.appendFileSync(logFile, `${JSON.stringify({ timestamp: new Date().toISOString(), type, ...details })}\n`);
+  try {
+    fs.mkdirSync(logDirectory, { recursive: true });
+    fs.appendFileSync(logFile, `${JSON.stringify({ timestamp: new Date().toISOString(), type, ...details })}\n`);
+  } catch (error) {
+    console.error('Could not write activity log:', error.message);
+  }
+}
+
+function createAuthToken(email) {
+  const payload = Buffer.from(JSON.stringify({ email, expiresAt: Date.now() + Number(process.env.SESSION_MAX_AGE || 86400000) })).toString('base64url');
+  const signature = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'change-this-session-secret').update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function getAuthToken(req) {
+  const cookies = String(req.headers.cookie || '').split(';').map(value => value.trim());
+  return cookies.find(value => value.startsWith('sendroom_auth='))?.slice('sendroom_auth='.length);
+}
+
+function getAdmin(req) {
+  const token = getAuthToken(req);
+  if (!token) return null;
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'change-this-session-secret').update(payload).digest('base64url');
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return data.expiresAt > Date.now() ? data : null;
+  } catch { return null; }
 }
 
 function requireAuth(req, res, next) {
-  if (req.session.admin) return next();
+  const admin = getAdmin(req);
+  if (admin) { req.admin = admin; return next(); }
   res.status(401).json({ error: 'Authentication required.' });
 }
 
@@ -43,16 +66,13 @@ app.post('/api/auth/login', async (req, res) => {
   const validEmail = email && email.toLowerCase() === String(process.env.ADMIN_EMAIL || '').toLowerCase();
   const validPassword = password && password === process.env.ADMIN_PASSWORD;
   if (!validEmail || !validPassword) return res.status(401).json({ error: 'Invalid admin email or password.' });
-  req.session.admin = { email: process.env.ADMIN_EMAIL };
-  req.session.save((error) => {
-    if (error) return res.status(500).json({ error: 'Could not create an admin session.' });
-    writeLog('login', { email: process.env.ADMIN_EMAIL });
-    res.json({ email: process.env.ADMIN_EMAIL });
-  });
+  writeLog('login', { email: process.env.ADMIN_EMAIL });
+  res.setHeader('Set-Cookie', `sendroom_auth=${createAuthToken(process.env.ADMIN_EMAIL)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${Math.floor(Number(process.env.SESSION_MAX_AGE || 86400000) / 1000)}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+  res.json({ email: process.env.ADMIN_EMAIL });
 });
 
-app.post('/api/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
-app.get('/api/auth/me', (req, res) => res.json({ authenticated: Boolean(req.session.admin), email: req.session.admin?.email }));
+app.post('/api/auth/logout', (req, res) => { res.setHeader('Set-Cookie', 'sendroom_auth=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0'); res.json({ ok: true }); });
+app.get('/api/auth/me', (req, res) => { const admin = getAdmin(req); res.json({ authenticated: Boolean(admin), email: admin?.email }); });
 app.use('/api', requireAuth);
 
 function normalizeNumber(value) {
@@ -213,4 +233,6 @@ app.post('/api/messages/test', async (req, res) => {
   catch (error) { res.status(502).json({ error: `Twilio rejected the message: ${error.message}` }); }
 });
 
-app.listen(port, () => console.log(`Sendroom listening at http://localhost:${port} (${twilioEnabled ? 'Twilio enabled' : 'dry-run until Twilio credentials are configured'})`));
+if (!isVercel) app.listen(port, () => console.log(`Sendroom listening at http://localhost:${port} (${twilioEnabled ? 'Twilio enabled' : 'dry-run until Twilio credentials are configured'})`));
+
+module.exports = app;
