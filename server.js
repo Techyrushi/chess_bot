@@ -20,6 +20,7 @@ const dataDirectory = path.join(__dirname, 'data');
 const templateFile = path.join(dataDirectory, 'templates.json');
 const mongoUri = process.env.DB_URI || '';
 const mongoDbName = process.env.DB_NAME || 'whatsapp-campaign';
+const mongoServerSelectionTimeoutMS = Number(process.env.DB_SERVER_SELECTION_TIMEOUT_MS || 5000);
 let mongoClient = null;
 let mongoDb = null;
 
@@ -29,7 +30,10 @@ async function connectMongo() {
   }
 
   try {
-    mongoClient = new MongoClient(mongoUri);
+    mongoClient = new MongoClient(mongoUri, {
+      serverSelectionTimeoutMS: mongoServerSelectionTimeoutMS,
+      connectTimeoutMS: mongoServerSelectionTimeoutMS,
+    });
     await mongoClient.connect();
     mongoDb = mongoClient.db(mongoDbName);
     await mongoDb.collection('settings').createIndex({ key: 1 }, { unique: true });
@@ -43,6 +47,8 @@ async function connectMongo() {
     return mongoDb;
   } catch (error) {
     console.warn('MongoDB unavailable, falling back to file storage:', error.message);
+    await mongoClient?.close().catch(() => {});
+    mongoClient = null;
     mongoDb = null;
     return null;
   }
@@ -108,6 +114,12 @@ function getTwilioClient() {
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+const mongoReady = connectMongo();
+app.use('/api', async (req, res, next) => {
+  await mongoReady;
+  next();
+});
 
 app.get('/api/health', (req, res) => res.json({ ok: true, runtime: isVercel ? 'vercel' : 'node', database: mongoDb ? 'mongodb' : 'local-file' }));
 
@@ -573,7 +585,7 @@ app.post('/api/messages/test', async (req, res) => {
   }
 });
 
-connectMongo().then(() => {
+mongoReady.then(() => {
   if (!isVercel) {
     const twilioConfig = getTwilioClient();
     app.listen(port, () => console.log(`Sendroom listening at http://localhost:${port} (${twilioConfig.enabled ? 'Twilio enabled' : 'dry-run until Twilio credentials are configured'})`));
